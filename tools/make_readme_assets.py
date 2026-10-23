@@ -129,6 +129,61 @@ def graded(photo):
     return Image.fromarray(np.clip(arr * 255, 0, 255).astype(np.uint8), "RGB")
 
 
+# ---------------------------------------------------------------- banner
+
+def banner():
+    """
+    Wide header image. Text only, no imagery, so nothing can go stale the way a
+    screenshot does.
+    """
+    from PIL import ImageFilter
+    Wb, Hb = 1600, 640
+    img = Image.new("RGB", (Wb, Hb), BLACK)
+
+    glow = Image.new("L", (Wb, Hb), 0)
+    gd = ImageDraw.Draw(glow)
+    for r in range(520, 0, -8):
+        a = int(28 * (1 - r / 520) ** 2)
+        gd.ellipse([Wb // 2 - r, Hb // 2 - r - 40, Wb // 2 + r, Hb // 2 + r - 40], fill=a)
+    img = Image.composite(
+        Image.new("RGB", (Wb, Hb), (60, 56, 50)), img,
+        glow.filter(ImageFilter.GaussianBlur(30)),
+    )
+    d = ImageDraw.Draw(img)
+
+    for x in range(0, Wb, 80):
+        d.line([(x, 0), (x, Hb)], fill=(14, 14, 16), width=1)
+    for y in range(0, Hb, 80):
+        d.line([(0, y), (Wb, y)], fill=(14, 14, 16), width=1)
+
+    f_big = font(190)
+    text = "FLOW"
+    spacing = 34
+    total = sum(d.textlength(c, font=f_big) for c in text) + spacing * (len(text) - 1)
+    x = (Wb - total) // 2
+    for c in text:
+        d.text((x, 190), c, font=f_big, fill=CREAM)
+        x += d.textlength(c, font=f_big) + spacing
+
+    f_sub = font_regular(30)
+    sub = "open-source photo editor  ·  imported photos as projects  ·  269 built-in LUTs"
+    tw = d.textlength(sub, font=f_sub)
+    d.text(((Wb - tw) // 2, 420), sub, font=f_sub, fill=DIM)
+
+    d.line([(Wb // 2 - 300, 500), (Wb // 2 + 300, 500)], fill=LINE, width=2)
+    f_tiny = mono(19)
+    cap = "269 CUBES  ·  13 EFFECTS  ·  8 HSL BANDS  ·  ANDROID"
+    tw = d.textlength(cap, font=f_tiny)
+    d.text(((Wb - tw) // 2, 528), cap, font=f_tiny, fill=(94, 92, 88))
+
+    for (cx, cy, dx, dy) in [(60, 60, 1, 1), (Wb - 60, 60, -1, 1),
+                             (60, Hb - 60, 1, -1), (Wb - 60, Hb - 60, -1, -1)]:
+        d.line([(cx, cy), (cx + 34 * dx, cy)], fill=(70, 68, 64), width=2)
+        d.line([(cx, cy), (cx, cy + 34 * dy)], fill=(70, 68, 64), width=2)
+
+    img.save(os.path.join(OUT, "banner.png"), optimize=True)
+    print("  banner.png")
+
 # ---------------------------------------------------------------- effects
 
 def effect_lum(img):
@@ -447,6 +502,7 @@ def paint_batch(d, scr):
 
 if __name__ == "__main__":
     print("generating synthetic assets (no personal imagery)...")
+    banner()
     before_after_gif()
     effects_grid()
     build_mockup("shot-home.png", paint_home)
