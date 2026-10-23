@@ -27,10 +27,9 @@ python validate_presets.py
 
 ## LUT extraction
 
-`decrypt_xray3.py` and `build_lutpack.py` are the tools that produced
+`extract_luts.py` and `pack_luts.py` are the tools that produced
 `app/src/main/assets/luts.bin`. See the "How the LUTs were made" section of the
-README for the rights discussion — these are here for transparency, not as an
-invitation.
+README for the rights discussion. Neither script is needed to build or run Flow.
 
 ## README assets
 

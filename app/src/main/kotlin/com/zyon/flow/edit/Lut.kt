@@ -70,7 +70,7 @@ class Lut(
     }
 
     companion object {
-        /** Parse the VSCO-style text cube: one "r g b" triple per line, 0..1. */
+        /** Parse the plain text cube format: one "r g b" triple per line, 0..1. */
         fun fromText(stream: InputStream): Lut? {
             val values = ArrayList<Float>(17 * 17 * 17 * 3)
             stream.bufferedReader().useLines { lines ->

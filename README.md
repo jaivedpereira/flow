@@ -5,7 +5,7 @@
 <br>
 
 **A free, open-source photo editor for Android.**
-Real VSCO cubes. GrainRad-style effects. No account, no cloud, no subscription.
+269 real 3D LUT cubes. GrainRad-style effects. No account, no cloud, no subscription.
 
 <br>
 
@@ -69,10 +69,9 @@ Real VSCO cubes. GrainRad-style effects. No account, no cloud, no subscription.
 ## What it is
 
 Flow is a photo editor built around one idea: **the good stuff should not be behind a
-subscription.** It is a complete reimplementation of the editing model that makes
-apps like VSCO feel good — presets you can browse as live thumbnails, a one-slider
-intensity control, tone curves, selective colour — with the parts that app hides
-behind a paywall left open.
+subscription.** It is a complete implementation of the editing model that makes good mobile
+editors feel good — presets you can browse as live thumbnails, a one-slider
+intensity control, tone curves, selective colour — with every part left open.
 
 It also takes the effects from [GrainRad](https://grainrad.com) (ASCII, dithering,
 halftone, CRT, halation) and makes them *non-destructive*, adjustable, and
@@ -151,7 +150,7 @@ than "washed out".
 The 269 presets are **real 3D LUTs**, not colour matrices with a nice name.
 
 <details>
-<summary><b>How a VSCO <code>.xray</code> cube becomes a Flow preset</b></summary>
+<summary><b>How a <code>.xray</code> cube becomes a Flow preset</b></summary>
 
 <br>
 
@@ -533,17 +532,17 @@ If you want to change one thing, this is where to look:
 
 <br>
 
-The 269 presets were extracted from locally-installed VSCO `.xray` files on a
-device I own, using a key and IV recovered from the app's own native library. No
-VSCO server was contacted, and the app in this repository contains **no VSCO code** —
-only the resulting LUT tables, which are numeric data.
+The 269 presets are plain numeric LUT tables, extracted for **personal and
+educational use** from `.xray` container files on a device I own. No server was
+contacted and this repository contains no third-party application code — only the
+resulting colour tables.
 
-This is documented openly because hiding it would be worse. The cubes are included
-for **personal and educational use**. If you are a rights holder and want them
-removed, open an issue and they will be removed.
+This is documented openly because hiding it would be worse. If you are a rights
+holder and want the tables removed, open an issue and they will be removed.
 
-The decryption toolchain is in the repo for transparency:
-`tools/decrypt_xray3.py` and `tools/build_lutpack.py`.
+The extraction toolchain is in the repo for transparency:
+`tools/extract_luts.py` and `tools/pack_luts.py`. Neither is needed to build or
+run the app.
 
 If you would rather not ship third-party LUTs, delete `app/src/main/assets/luts.bin`
 and the app builds fine — you keep every feature and can import your own `.cube`

@@ -1,6 +1,6 @@
 /**
  * Flow — open-source photo editor.
- * Home lists projects; the editor applies VSCO cubes. Nothing leaves the device.
+ * Home lists projects; the editor applies colour cubes. Nothing leaves the device.
  */
 
 package com.zyon.flow

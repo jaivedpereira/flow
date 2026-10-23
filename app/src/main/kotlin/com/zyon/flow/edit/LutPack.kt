@@ -1,5 +1,5 @@
 /**
- * Flow — VSCO LUT pack loader.
+ * Flow — LUT pack loader.
  *
  * The pack is shipped in assets as a single binary (see tools/build_lutpack.py):
  *   "FLOWLUT1" + u32 count + entries { u16 lens, key/name/group, u32 len, u16 RGB data }

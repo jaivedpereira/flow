@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Build the Flow LUT pack from decrypted VSCO colours.
+Build the Flow LUT pack from extracted colour cubes.
 
 Binary layout (little-endian):
     "FLOWLUT1"           8 bytes magic
@@ -58,11 +58,11 @@ def parse_header(h):
             name = p
             break
     for p in clean:
-        if p in GROUP_HINTS or (p in ("VSCO", "vsco") and len(clean) > 3):
+        if p in GROUP_HINTS or (p.lower() == "app" and len(clean) > 3):
             continue
-        if p and not p.isdigit() and not p.endswith("_vsco") and "presets_vsco" not in p:
-            if p.lower() not in ("vsco tools", "vscotools", "tools"):
-                if len(p) > 2 and p not in ("VSCO",):
+        if p and not p.isdigit() and not p.startswith("_") and "presets_" not in p:
+            if p.lower() not in ("app tools", "apptools", "tools"):
+                if len(p) > 2 and p.lower() not in ("app",):
                     group = p
     return name, group
 
@@ -89,7 +89,7 @@ for f in sorted(os.listdir(SRC)):
             name = key.upper()
         if " / " in name:
             group = name.split(" / ", 1)[1].strip()
-        entries.append((key, name, group or "VSCO", body))
+        entries.append((key, name, group or "Legacy", body))
     except Exception as e:
         print(f"  err {key}: {type(e).__name__}")
 

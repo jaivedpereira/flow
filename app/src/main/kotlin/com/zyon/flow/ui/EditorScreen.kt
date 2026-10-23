@@ -1,5 +1,5 @@
 /**
- * Flow — editor (v4): VSCO-style carousel with live photo thumbnails.
+ * Flow — editor: preset carousel with live photo thumbnails.
  */
 
 package com.zyon.flow.ui

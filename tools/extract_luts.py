@@ -1,13 +1,16 @@
 #!/usr/bin/env python3
 """
-Decrypt VSCO .xray colour cubes — final layout.
+Extract 3D colour cubes from a container file.
 
-Recovered from com.vsco.imaging.colorcubes + com.vsco.crypto:
+Container layout:
   asset -> AES-128-CBC/PKCS7 -> zlib inflate -> header + LUT(s)
 
 LUT: 17^3 entries, INTERLEAVED RGB (u16 little-endian), 29478 bytes each.
 Header length = total - n_luts * 29478 (starts with a 16-byte hash then metadata
 strings: preset group, name, code).
+
+Provided for transparency about how app/src/main/assets/luts.bin was produced.
+You do not need this script to build or run Flow.
 """
 import os
 import sys

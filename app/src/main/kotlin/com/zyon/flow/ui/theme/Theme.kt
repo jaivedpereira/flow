@@ -1,6 +1,6 @@
 /**
  * Flow — open-source photo editor.
- * Theme: editorial black with a warm cream accent (VSCO lineage, own identity).
+ * Theme: editorial black with a warm cream accent.
  */
 
 package com.zyon.flow.ui.theme

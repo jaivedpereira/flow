@@ -18,7 +18,7 @@ data class Transform(
 /** Everything that defines the current look. */
 data class EditState(
     val presetId: String = "original",
-    /** VSCO cube key from LutPack; when set it replaces the built-in preset. */
+    /** Cube key from LutPack; when set it replaces the built-in preset. */
     val lutKey: String? = null,
     /** 0..1 blend of the cube against the untouched photo. */
     val lutIntensity: Float = 1f,
