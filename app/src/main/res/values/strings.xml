@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Flow</string>
+    <string name="import_photo">Import photo</string>
+    <string name="save">Save</string>
+    <string name="presets">Presets</string>
+    <string name="adjust">Adjust</string>
+    <string name="original">Original</string>
+    <string name="exported">Saved to gallery</string>
+    <string name="export_failed">Could not save</string>
+</resources>

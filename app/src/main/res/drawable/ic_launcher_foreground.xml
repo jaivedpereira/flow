@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:height="108dp"
+    android:width="108dp"
+    android:viewportWidth="108.0"
+    android:viewportHeight="108.0">
+
+    <!-- Stylised F: vertical stem + two bars, cream on black -->
+    <path
+        android:fillColor="#FFEDE7DC"
+        android:pathData="M38,30 L74,30 L74,41 L51,41 L51,51 L70,51 L70,62 L51,62 L51,80 L38,80 Z" />
+
+    <!-- Flow accent stroke crossing the stem -->
+    <path
+        android:strokeColor="#FFEDE7DC"
+        android:strokeWidth="3"
+        android:strokeLineCap="round"
+        android:fillColor="#00000000"
+        android:pathData="M28,58 C34,52 42,52 48,58 C54,64 62,64 68,58 C72,54 76,54 80,56" />
+</vector>

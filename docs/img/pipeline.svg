@@ -1,0 +1,96 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="894" height="444" viewBox="0 0 894 444">
+<style>
+  .box{fill:#0B0B0D;stroke:#1F1F1F;stroke-width:1.5;rx:10}
+  .box:hover{stroke:#EDE7DC;stroke-width:2}
+  .name{fill:#EDE7DC;font:600 15px "Segoe UI",system-ui,sans-serif}
+  .desc{fill:#787672;font:11px "Segoe UI",system-ui,sans-serif}
+  .arrow{stroke:#3A3A3A;stroke-width:2;fill:none}
+  .flow{stroke:#EDE7DC;stroke-width:2;fill:none;stroke-dasharray:6 8;opacity:.55}
+  .flow{animation:dash 1.6s linear infinite}
+  @keyframes dash{to{stroke-dashoffset:-28}}
+  .num{fill:#EDE7DC;font:700 11px "Consolas",monospace;opacity:.7}
+</style>
+<rect width="894" height="444" fill="#000000"/>
+<path class="flow" d="M228 97.0 L256 97.0"/>
+<path class="arrow" d="M248 92.0 L258 97.0 L248 102.0"/>
+<path class="flow" d="M430 97.0 L458 97.0"/>
+<path class="arrow" d="M450 92.0 L460 97.0 L450 102.0"/>
+<path class="flow" d="M632 97.0 L660 97.0"/>
+<path class="arrow" d="M652 92.0 L662 97.0 L652 102.0"/>
+<path class="flow" d="M750.0 134 L750.0 157.0 L144.0 157.0 L144.0 172"/>
+<path class="arrow" d="M139.0 164 L144.0 174 L149.0 164"/>
+<path class="flow" d="M228 217.0 L256 217.0"/>
+<path class="arrow" d="M248 212.0 L258 217.0 L248 222.0"/>
+<path class="flow" d="M430 217.0 L458 217.0"/>
+<path class="arrow" d="M450 212.0 L460 217.0 L450 222.0"/>
+<path class="flow" d="M632 217.0 L660 217.0"/>
+<path class="arrow" d="M652 212.0 L662 217.0 L652 222.0"/>
+<path class="flow" d="M750.0 254 L750.0 277.0 L144.0 277.0 L144.0 292"/>
+<path class="arrow" d="M139.0 284 L144.0 294 L149.0 284"/>
+<path class="flow" d="M228 337.0 L256 337.0"/>
+<path class="arrow" d="M248 332.0 L258 337.0 L248 342.0"/>
+<path class="flow" d="M430 337.0 L458 337.0"/>
+<path class="arrow" d="M450 332.0 L460 337.0 L450 342.0"/>
+<path class="flow" d="M632 337.0 L660 337.0"/>
+<path class="arrow" d="M652 332.0 L662 337.0 L652 342.0"/>
+<g><rect class="box" x="60" y="60" width="168" height="74" rx="10"/>
+<text class="num" x="74" y="82">01</text>
+<text class="name" x="100" y="83">geometry</text>
+<text class="desc" x="74" y="106">rotate / crop / straighten</text>
+</g>
+<g><rect class="box" x="262" y="60" width="168" height="74" rx="10"/>
+<text class="num" x="276" y="82">02</text>
+<text class="name" x="302" y="83">cube</text>
+<text class="desc" x="276" y="106">3D LUT, 269 built-in</text>
+</g>
+<g><rect class="box" x="464" y="60" width="168" height="74" rx="10"/>
+<text class="num" x="478" y="82">03</text>
+<text class="name" x="504" y="83">matrix</text>
+<text class="desc" x="478" y="106">exposure · contrast · warmth</text>
+</g>
+<g><rect class="box" x="666" y="60" width="168" height="74" rx="10"/>
+<text class="num" x="680" y="82">04</text>
+<text class="name" x="706" y="83">tone</text>
+<text class="desc" x="680" y="106">highlights · shadows · vibrance</text>
+</g>
+<g><rect class="box" x="60" y="180" width="168" height="74" rx="10"/>
+<text class="num" x="74" y="202">05</text>
+<text class="name" x="100" y="203">curves</text>
+<text class="desc" x="74" y="226">monotone cubic, 4 channels</text>
+</g>
+<g><rect class="box" x="262" y="180" width="168" height="74" rx="10"/>
+<text class="num" x="276" y="202">06</text>
+<text class="name" x="302" y="203">hsl</text>
+<text class="desc" x="276" y="226">8 bands · hue · sat · lum</text>
+</g>
+<g><rect class="box" x="464" y="180" width="168" height="74" rx="10"/>
+<text class="num" x="478" y="202">07</text>
+<text class="name" x="504" y="203">effect</text>
+<text class="desc" x="478" y="226">13 artistic filters</text>
+</g>
+<g><rect class="box" x="666" y="180" width="168" height="74" rx="10"/>
+<text class="num" x="680" y="202">08</text>
+<text class="name" x="706" y="203">detail</text>
+<text class="desc" x="680" y="226">sharpen · clarity</text>
+</g>
+<g><rect class="box" x="60" y="300" width="168" height="74" rx="10"/>
+<text class="num" x="74" y="322">09</text>
+<text class="name" x="100" y="323">vignette</text>
+<text class="desc" x="74" y="346">radial falloff</text>
+</g>
+<g><rect class="box" x="262" y="300" width="168" height="74" rx="10"/>
+<text class="num" x="276" y="322">10</text>
+<text class="name" x="302" y="323">grain</text>
+<text class="desc" x="276" y="346">film noise</text>
+</g>
+<g><rect class="box" x="464" y="300" width="168" height="74" rx="10"/>
+<text class="num" x="478" y="322">11</text>
+<text class="name" x="504" y="323">overlay</text>
+<text class="desc" x="478" y="346">text · stickers</text>
+</g>
+<g><rect class="box" x="666" y="300" width="168" height="74" rx="10"/>
+<text class="num" x="680" y="322">12</text>
+<text class="name" x="706" y="323">border</text>
+<text class="desc" x="680" y="346">frame</text>
+</g>
+</svg>
