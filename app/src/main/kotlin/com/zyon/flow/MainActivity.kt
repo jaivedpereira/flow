@@ -90,6 +90,12 @@ private fun FlowApp() {
                     inEditor = true
                 },
                 onOpenBatch = { inBatch = true },
+                onDeleteProject = { project ->
+                    com.zyon.flow.edit.ProjectStore.remove(context, project.id)
+                    // the imported photo copy is only referenced by this project
+                    com.zyon.flow.edit.PhotoStore.delete(context, project.photoUri)
+                    homeRefresh++
+                },
                 refreshKey = homeRefresh,
             )
         }

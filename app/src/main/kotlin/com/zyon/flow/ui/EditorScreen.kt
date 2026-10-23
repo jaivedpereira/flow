@@ -379,6 +379,39 @@ fun EditorScreen(
         }
     }
 
+    /** Render, save, then hand the file to the system share sheet. */
+    fun commitShare() {
+        val src = exportSrc ?: return
+        saving = true
+        scope.launch {
+            val out = withContext(Dispatchers.Default) {
+                ImageOps.render(src, state, activeLut, mask) { name, bold ->
+                    com.zyon.flow.edit.FontStore.typeface(context, name, bold)
+                }
+            }
+            val savedUri = ImageOps.exportUri(context, out)
+            currentUri?.let { uri ->
+                val id = initial?.id ?: System.currentTimeMillis()
+                ProjectStore.upsert(context, Project.from(uri, state, id))
+                MaskStore.save(context, id, mask)
+            }
+            saving = false
+            onSaved()
+            if (savedUri != null) {
+                val send = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+                    type = "image/jpeg"
+                    putExtra(android.content.Intent.EXTRA_STREAM, savedUri)
+                    addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                }
+                runCatching {
+                    context.startActivity(android.content.Intent.createChooser(send, null))
+                }
+            } else {
+                toast = "Could not save"
+            }
+        }
+    }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -394,6 +427,29 @@ fun EditorScreen(
                 .padding(horizontal = 14.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
+            // revert every edit, keeping the imported photo
+            Box(
+                modifier = Modifier
+                    .size(34.dp)
+                    .clip(CircleShape)
+                    .clickable(enabled = !state.isPristine) {
+                        state = EditState()
+                        mask.clear()
+                        maskVersion++
+                        selectedTextId = null
+                        splitMode = false
+                        toast = null
+                    },
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    text = "↺",
+                    color = if (state.isPristine) FlowTextDim.copy(alpha = 0.35f) else FlowText,
+                    fontSize = 17.sp,
+                )
+            }
+            Spacer(Modifier.width(4.dp))
+
             Box(
                 modifier = Modifier
                     .size(34.dp)
@@ -420,7 +476,7 @@ fun EditorScreen(
                 fontWeight = FontWeight.SemiBold,
                 modifier = Modifier
                     .clip(RoundedCornerShape(8.dp))
-                    .clickable(enabled = exportSrc != null && !saving) { commit("Exported — ready to share") }
+                    .clickable(enabled = exportSrc != null && !saving) { commitShare() }
                     .padding(horizontal = 10.dp, vertical = 8.dp),
             )
         }

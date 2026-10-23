@@ -15,6 +15,12 @@
     <string name="home_empty_title">Nada aqui ainda</string>
     <string name="home_empty_body">Importe uma foto e suas edições aparecem aqui.</string>
 
+    <!-- project actions -->
+    <string name="project_delete_q">Apagar projeto?</string>
+    <string name="yes">SIM</string>
+    <string name="no">NÃO</string>
+    <string name="project_deleted">Projeto apagado</string>
+
     <!-- editor top bar -->
     <string name="save">Salvar</string>
     <string name="publish">Publicar</string>

@@ -310,7 +310,11 @@ object ImageOps {
 
     // ---- export ----------------------------------------------------------
 
-    suspend fun export(context: Context, bitmap: Bitmap): Boolean = withContext(Dispatchers.IO) {
+    suspend fun export(context: Context, bitmap: Bitmap): Boolean =
+        exportUri(context, bitmap) != null
+
+    /** Same as [export] but returns the saved uri, for share intents. */
+    suspend fun exportUri(context: Context, bitmap: Bitmap): Uri? = withContext(Dispatchers.IO) {
         val name = "Flow_${System.currentTimeMillis()}.jpg"
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
@@ -322,14 +326,14 @@ object ImageOps {
                 }
                 val resolver = context.contentResolver
                 val uri = resolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values)
-                    ?: return@withContext false
+                    ?: return@withContext null
                 resolver.openOutputStream(uri)?.use { stream ->
                     bitmap.compress(Bitmap.CompressFormat.JPEG, 95, stream)
-                } ?: return@withContext false
+                } ?: return@withContext null
                 values.clear()
                 values.put(MediaStore.Images.Media.IS_PENDING, 0)
                 resolver.update(uri, values, null, null)
-                true
+                uri
             } else {
                 @Suppress("DEPRECATION")
                 val dir = File(
@@ -342,13 +346,10 @@ object ImageOps {
                     bitmap.compress(Bitmap.CompressFormat.JPEG, 95, stream)
                 }
                 @Suppress("DEPRECATION")
-                MediaStore.Images.Media.insertImage(
-                    context.contentResolver, file.absolutePath, file.name, null,
-                )
-                true
+                Uri.fromFile(file)
             }
         } catch (t: Throwable) {
-            false
+            null
         }
     }
 

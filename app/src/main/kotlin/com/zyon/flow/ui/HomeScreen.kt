@@ -44,6 +44,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.res.stringResource
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
@@ -73,6 +74,7 @@ import kotlinx.coroutines.withContext
 fun HomeScreen(
     onOpenPhoto: (Uri, Project?) -> Unit,
     onOpenBatch: () -> Unit,
+    onDeleteProject: (Project) -> Unit,
     /** Bumped by the caller whenever a project is saved, to refresh thumbnails. */
     refreshKey: Int,
 ) {
@@ -196,12 +198,17 @@ fun HomeScreen(
             } else {
                 items(projects, key = { it.id }) { project ->
                     val thumb = projectThumbs[project.id]
+                    var askingDelete by remember { mutableStateOf(false) }
+
                     Box(
                         modifier = Modifier
                             .aspectRatio(1f)
                             .clip(RoundedCornerShape(10.dp))
                             .background(FlowElevated)
-                            .clickable { onOpenPhoto(project.uri(), project) },
+                            .combinedClickable(
+                                onClick = { onOpenPhoto(project.uri(), project) },
+                                onLongClick = { askingDelete = true },
+                            ),
                     ) {
                         if (thumb != null) {
                             Image(
@@ -228,6 +235,59 @@ fun HomeScreen(
                                     fontSize = 8.sp,
                                     letterSpacing = 0.5.sp,
                                 )
+                            }
+                        }
+
+                        // delete affordance + confirmation, only while asking
+                        if (askingDelete) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .background(FlowBlack.copy(alpha = 0.82f)),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                    Text(
+                                        text = stringResource(R.string.project_delete_q),
+                                        color = FlowCream,
+                                        style = MaterialTheme.typography.labelMedium,
+                                        fontSize = 10.sp,
+                                    )
+                                    Spacer(Modifier.height(10.dp))
+                                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                        Box(
+                                            modifier = Modifier
+                                                .clip(RoundedCornerShape(7.dp))
+                                                .background(FlowCream)
+                                                .clickable {
+                                                    askingDelete = false
+                                                    onDeleteProject(project)
+                                                }
+                                                .padding(horizontal = 12.dp, vertical = 6.dp),
+                                        ) {
+                                            Text(
+                                                text = stringResource(R.string.yes),
+                                                color = FlowBlack,
+                                                style = MaterialTheme.typography.labelSmall,
+                                                fontSize = 9.sp,
+                                            )
+                                        }
+                                        Box(
+                                            modifier = Modifier
+                                                .clip(RoundedCornerShape(7.dp))
+                                                .border(1.dp, FlowLine, RoundedCornerShape(7.dp))
+                                                .clickable { askingDelete = false }
+                                                .padding(horizontal = 12.dp, vertical = 6.dp),
+                                        ) {
+                                            Text(
+                                                text = stringResource(R.string.no),
+                                                color = FlowTextDim,
+                                                style = MaterialTheme.typography.labelSmall,
+                                                fontSize = 9.sp,
+                                            )
+                                        }
+                                    }
+                                }
                             }
                         }
                     }

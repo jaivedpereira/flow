@@ -63,6 +63,21 @@ object PhotoStore {
     fun folderSize(context: Context): Long =
         dir(context).listFiles()?.sumOf { it.length() } ?: 0L
 
+    /**
+     * Delete the app-local copy behind a project. Only touches files inside our
+     * own photos/ folder, so a project pointing at an outside URI is left alone.
+     */
+    fun delete(context: Context, stored: String) {
+        runCatching {
+            val u = Uri.parse(stored)
+            if (u.scheme != "file") return
+            val path = u.path ?: return
+            val f = File(path)
+            val root = dir(context).canonicalPath
+            if (f.canonicalPath.startsWith(root) && f.exists()) f.delete()
+        }
+    }
+
     fun clear(context: Context) {
         dir(context).listFiles()?.forEach { it.delete() }
     }

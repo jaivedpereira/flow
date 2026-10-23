@@ -53,6 +53,8 @@ data class EditState(
     val splitShadow: Float = 0f,   // -1..1 teal/orange wash in shadows
     val splitHighlight: Float = 0f, // -1..1 warm/cool wash in highlights
 ) {
+    /** True when nothing has been changed yet; drives the revert button. */
+    val isPristine: Boolean get() = this == EditState()
     val preset: Preset get() = presetById(presetId)
 }
 
