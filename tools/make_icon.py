@@ -26,13 +26,15 @@ CX, CY = 54.0, 54.0        # cube centre
 S = 18.0                   # half-edge -> height 4S = 72dp, width 3.464S ≈ 62.3dp
 K = 0.8660254              # cos(30deg)
 
+# D2-dusk: a violet-to-ember gradient on the top face. It reads as a sunset
+# grade, which is what the app is for, rather than as a neutral object.
 COLOURS = {
-    "bg":      (0, 0, 0),
-    "top":     [(247, 241, 229), (236, 228, 214), (220, 208, 192),
-                (196, 178, 162), (166, 140, 128)],
-    "left":    (16, 24, 34),
-    "right":   (52, 32, 30),
-    "edge":    (128, 120, 110),
+    "bg":      (6, 5, 10),
+    "top":     [(247, 226, 206), (240, 178, 150), (214, 122, 104),
+                (150, 82, 104), (86, 58, 108)],
+    "left":    (24, 18, 34),
+    "right":   (46, 28, 32),
+    "edge":    (120, 96, 96),
 }
 
 
@@ -145,7 +147,8 @@ DENSITIES = {"mdpi": 48, "hdpi": 72, "xhdpi": 96, "xxhdpi": 144, "xxxhdpi": 192}
 
 def render_raster(size, round_mask=False, ss=4):
     big = size * ss
-    img = Image.new("RGBA", (big, big), (0, 0, 0, 255))
+    bg_rgb = COLOURS["bg"]
+    img = Image.new("RGBA", (big, big), bg_rgb + (255,))
     d = ImageDraw.Draw(img)
     sc = big / VP
 
@@ -217,7 +220,7 @@ def main():
     os.makedirs(values, exist_ok=True)
     with open(os.path.join(values, "ic_launcher_background.xml"), "w", encoding="utf-8") as f:
         f.write('<?xml version="1.0" encoding="utf-8"?>\n<resources>\n'
-                '    <color name="ic_launcher_background">#FF000000</color>\n</resources>\n')
+                '    <color name="ic_launcher_background">#FF06050A</color>\n</resources>\n')
     print("  values/ic_launcher_background.xml")
 
     # adaptive icon xml (with monochrome for themed icons)
