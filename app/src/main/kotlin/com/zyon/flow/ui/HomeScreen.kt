@@ -4,6 +4,8 @@
 
 package com.zyon.flow.ui
 
+import com.zyon.flow.R
+
 import android.graphics.Bitmap
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -41,6 +43,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
@@ -122,14 +125,14 @@ fun HomeScreen(
         ) {
             Column(Modifier.weight(1f)) {
                 Text(
-                    text = "FLOW",
+                    text = stringResource(R.string.app_name),
                     color = FlowText,
                     style = MaterialTheme.typography.headlineMedium,
                     letterSpacing = 8.sp,
                     fontWeight = FontWeight.Bold,
                 )
                 Text(
-                    text = "photo editor",
+                    text = stringResource(R.string.app_tagline),
                     color = FlowTextDim,
                     style = MaterialTheme.typography.labelSmall,
                     letterSpacing = 1.5.sp,
@@ -144,7 +147,7 @@ fun HomeScreen(
                     .padding(horizontal = 13.dp, vertical = 11.dp),
             ) {
                 Text(
-                    text = "BATCH",
+                    text = stringResource(R.string.home_batch),
                     color = FlowText,
                     style = MaterialTheme.typography.labelMedium,
                     fontSize = 10.sp,
@@ -165,7 +168,7 @@ fun HomeScreen(
                     .padding(horizontal = 15.dp, vertical = 11.dp),
             ) {
                 Text(
-                    text = "IMPORT",
+                    text = stringResource(R.string.home_import),
                     color = FlowBlack,
                     style = MaterialTheme.typography.labelMedium,
                     fontSize = 10.sp,
@@ -262,12 +265,12 @@ fun HomeScreen(
                     Spacer(Modifier.size(14.dp))
                     Column {
                         Text(
-                            text = "Import from gallery",
+                            text = stringResource(R.string.home_new_photo_hint),
                             color = FlowText,
                             style = MaterialTheme.typography.bodyMedium,
                         )
                         Text(
-                            text = "269 built-in cubes, nothing uploaded",
+                            text = stringResource(R.string.home_cubes_note),
                             color = FlowTextDim,
                             style = MaterialTheme.typography.labelSmall,
                         )
@@ -302,13 +305,13 @@ private fun EmptyProjects() {
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Text(
-            text = "No projects yet",
+            text = stringResource(R.string.home_empty_title),
             color = FlowText,
             style = MaterialTheme.typography.bodyMedium,
         )
         Spacer(Modifier.height(4.dp))
         Text(
-            text = "Import a photo and your edits show up here",
+            text = stringResource(R.string.home_empty_body),
             color = FlowTextDim,
             style = MaterialTheme.typography.labelSmall,
         )

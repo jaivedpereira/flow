@@ -4,6 +4,8 @@
 
 package com.zyon.flow.ui
 
+import com.zyon.flow.R
+
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -29,6 +31,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
@@ -85,7 +88,7 @@ fun Histogram(
             }
         } else {
             Text(
-                text = "HISTOGRAM",
+                text = stringResource(R.string.histogram),
                 style = MaterialTheme.typography.labelSmall,
                 color = FlowTextDim,
                 letterSpacing = 2.sp,
@@ -110,7 +113,7 @@ fun CropPanel(
             .padding(top = 10.dp, bottom = 10.dp),
     ) {
         Text(
-            text = "RATIO",
+            text = stringResource(R.string.crop_ratio),
             style = MaterialTheme.typography.labelSmall,
             color = FlowTextDim,
             letterSpacing = 2.sp,
@@ -143,7 +146,7 @@ fun CropPanel(
 
         Spacer(Modifier.height(14.dp))
         Text(
-            text = "TRANSFORM",
+            text = stringResource(R.string.crop_transform),
             style = MaterialTheme.typography.labelSmall,
             color = FlowTextDim,
             letterSpacing = 2.sp,
@@ -174,7 +177,7 @@ fun CropPanel(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
-                text = "STRAIGHTEN",
+                text = stringResource(R.string.crop_straighten),
                 style = MaterialTheme.typography.labelSmall,
                 color = FlowTextDim,
                 modifier = Modifier.width(96.dp),
@@ -243,7 +246,7 @@ fun RecipePanel(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
-                text = "RECIPES",
+                text = stringResource(R.string.recipe_title),
                 style = MaterialTheme.typography.labelSmall,
                 color = FlowTextDim,
                 letterSpacing = 2.sp,
@@ -257,7 +260,7 @@ fun RecipePanel(
                     .padding(horizontal = 14.dp, vertical = 8.dp),
             ) {
                 Text(
-                    text = "SAVE LOOK",
+                    text = stringResource(R.string.recipe_save),
                     style = MaterialTheme.typography.labelSmall,
                     color = Color.Black,
                     fontWeight = FontWeight.SemiBold,
@@ -270,7 +273,7 @@ fun RecipePanel(
 
         if (recipes.isEmpty()) {
             Text(
-                text = "No saved looks yet. Tune a preset, then save it here.",
+                text = stringResource(R.string.recipe_empty),
                 style = MaterialTheme.typography.bodySmall,
                 color = FlowTextDim,
                 modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp),
@@ -310,7 +313,7 @@ fun RecipePanel(
                             textAlign = TextAlign.Center,
                         )
                         Text(
-                            text = "hold to delete",
+                            text = stringResource(R.string.recipe_delete_hint),
                             style = MaterialTheme.typography.labelSmall,
                             color = FlowTextDim.copy(alpha = 0.6f),
                             fontSize = 8.sp,

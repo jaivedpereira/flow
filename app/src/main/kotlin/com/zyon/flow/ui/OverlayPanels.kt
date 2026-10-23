@@ -4,6 +4,8 @@
 
 package com.zyon.flow.ui
 
+import com.zyon.flow.R
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -31,6 +33,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
@@ -72,7 +75,7 @@ fun MaskShapeRow(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
-                text = "SHAPE",
+                text = stringResource(R.string.effects_shape),
                 style = MaterialTheme.typography.labelSmall,
                 fontSize = 9.sp,
                 letterSpacing = 1.2.sp,
@@ -239,7 +242,7 @@ fun TextPanel(
 
         if (layer == null) {
             Text(
-                text = "Tap + TEXT to add a caption.",
+                text = stringResource(R.string.text_empty_hint),
                 style = MaterialTheme.typography.labelSmall,
                 fontSize = 9.sp,
                 color = FlowTextDim,
@@ -370,7 +373,7 @@ fun StickerPanel(
             .padding(top = 8.dp, bottom = 6.dp),
     ) {
         Text(
-            text = "TAP TO PLACE",
+            text = stringResource(R.string.sticker_tap),
             style = MaterialTheme.typography.labelSmall,
             fontSize = 9.sp,
             letterSpacing = 1.4.sp,

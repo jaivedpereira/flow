@@ -4,6 +4,8 @@
 
 package com.zyon.flow.ui
 
+import com.zyon.flow.R
+
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -37,6 +39,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
@@ -314,7 +317,7 @@ fun BorderPanel(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
-                text = "WIDTH",
+                text = stringResource(R.string.border_width),
                 style = MaterialTheme.typography.labelSmall,
                 fontSize = 9.sp,
                 letterSpacing = 1.2.sp,
@@ -349,7 +352,7 @@ fun BorderPanel(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
-                text = "RADIUS",
+                text = stringResource(R.string.border_radius),
                 style = MaterialTheme.typography.labelSmall,
                 fontSize = 9.sp,
                 letterSpacing = 1.2.sp,
@@ -380,7 +383,7 @@ fun BorderPanel(
         Spacer(Modifier.height(8.dp))
 
         Text(
-            text = "COLOUR",
+            text = stringResource(R.string.border_colour),
             style = MaterialTheme.typography.labelSmall,
             fontSize = 9.sp,
             letterSpacing = 1.2.sp,
@@ -450,7 +453,7 @@ fun MaskControls(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(
-            text = "MASK",
+            text = stringResource(R.string.effects_mask),
             style = MaterialTheme.typography.labelSmall,
             fontSize = 9.sp,
             letterSpacing = 1.2.sp,

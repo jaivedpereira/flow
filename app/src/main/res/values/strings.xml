@@ -1,11 +1,163 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+
+    <!-- app -->
     <string name="app_name">Flow</string>
-    <string name="import_photo">Import photo</string>
-    <string name="save">Save</string>
-    <string name="presets">Presets</string>
-    <string name="adjust">Adjust</string>
-    <string name="original">Original</string>
-    <string name="exported">Saved to gallery</string>
-    <string name="export_failed">Could not save</string>
+    <string name="app_tagline">editor de fotos</string>
+
+    <!-- home -->
+    <string name="home_projects">PROJETOS · %1$d</string>
+    <string name="home_new_photo">NOVA FOTO</string>
+    <string name="home_new_photo_hint">Importar da galeria</string>
+    <string name="home_cubes_note">269 presets embutidos, nada é enviado</string>
+    <string name="home_batch">LOTE</string>
+    <string name="home_import">IMPORTAR</string>
+    <string name="home_empty_title">Nada aqui ainda</string>
+    <string name="home_empty_body">Importe uma foto e suas edições aparecem aqui.</string>
+
+    <!-- editor top bar -->
+    <string name="save">Salvar</string>
+    <string name="publish">Publicar</string>
+    <string name="share">Compartilhar</string>
+    <string name="no_photo">Sem foto</string>
+    <string name="load_original">ORIGINAL</string>
+
+    <!-- editor modes -->
+    <string name="mode_cubes">Cubes</string>
+    <string name="mode_effects">Efeitos</string>
+    <string name="mode_adjust">Ajustes</string>
+    <string name="mode_curves">Curvas</string>
+    <string name="mode_hsl">HSL</string>
+    <string name="mode_text">Texto</string>
+    <string name="mode_sticker">Adesivo</string>
+    <string name="mode_crop">Cortar</string>
+    <string name="mode_border">Moldura</string>
+    <string name="mode_recipe">Receita</string>
+    <string name="mode_split">Split</string>
+    <string name="mode_import">Importar</string>
+
+    <!-- cubes -->
+    <string name="cubes_import">.CUBE</string>
+    <string name="cubes_save">SALVAR</string>
+    <string name="cubes_import_failed">Arquivo .cube inválido</string>
+    <string name="cubes_exported">Cubo exportado</string>
+    <string name="cubes_export_failed">Não foi possível exportar</string>
+    <string name="cubes_select_first">Selecione um cubo primeiro</string>
+
+    <!-- effects -->
+    <string name="effects_mask">MÁSCARA</string>
+    <string name="effects_mask_on">LIG</string>
+    <string name="effects_mask_off">DESL</string>
+    <string name="effects_brush">PINCEL</string>
+    <string name="effects_painting">PINTANDO</string>
+    <string name="effects_clear">LIMPAR</string>
+    <string name="effects_invert">INVERTER</string>
+    <string name="effects_shape">FORMA</string>
+    <string name="effects_feather">SUAVIDADE</string>
+    <string name="effects_replacing">SUBSTITUIR</string>
+    <string name="effects_adding">SOMANDO</string>
+    <string name="effects_intensity">INTENSIDADE</string>
+    <string name="effects_none_hint">Nenhum efeito. Escolha uma miniatura acima — cada uma é sua própria foto.</string>
+
+    <!-- adjustments -->
+    <string name="adj_exposure">Exposição</string>
+    <string name="adj_contrast">Contraste</string>
+    <string name="adj_highlights">Altas luzes</string>
+    <string name="adj_shadows">Sombras</string>
+    <string name="adj_saturation">Saturação</string>
+    <string name="adj_vibrance">Vibração</string>
+    <string name="adj_warmth">Temperatura</string>
+    <string name="adj_hue">Matiz</string>
+    <string name="adj_fade">Desbotar</string>
+    <string name="adj_vignette">Vinheta</string>
+    <string name="adj_grain">Grão</string>
+    <string name="adj_sharpen">Nitidez</string>
+    <string name="adj_clarity">Clareza</string>
+
+    <!-- hsl -->
+    <string name="hsl_hue">MATIZ</string>
+    <string name="hsl_saturation">SATURAÇÃO</string>
+    <string name="hsl_luminance">LUMINÂNCIA</string>
+    <string name="hsl_reset_band">ZERAR FAIXA</string>
+    <string name="hsl_reset_all">ZERAR TUDO</string>
+
+    <!-- curves -->
+    <string name="curves_save_set">SALVAR</string>
+    <string name="curves_reset">ZERAR</string>
+    <string name="curves_reset_all">ZERAR TUDO</string>
+    <string name="curves_saved">Conjunto salvo</string>
+
+    <!-- crop -->
+    <string name="crop_ratio">PROPORÇÃO</string>
+    <string name="crop_transform">TRANSFORMAR</string>
+    <string name="crop_straighten">ENDIREITAR</string>
+
+    <!-- border -->
+    <string name="border_width">ESPESSURA</string>
+    <string name="border_radius">RAIO</string>
+    <string name="border_colour">COR</string>
+
+    <!-- text -->
+    <string name="text_add">+ TEXTO</string>
+    <string name="text_caption">Legenda</string>
+    <string name="text_empty_hint">Toque em + TEXTO para adicionar uma legenda.</string>
+    <string name="text_size">TAMANHO</string>
+    <string name="text_track">ESPAÇO</string>
+    <string name="text_rotate">ROTACIONAR</string>
+    <string name="text_add_font">+ FONTE</string>
+    <string name="text_font_added">Fonte adicionada</string>
+    <string name="text_font_failed">Arquivo de fonte não suportado</string>
+    <string name="text_font_removed">Fonte removida</string>
+    <string name="text_delete">APAGAR</string>
+
+    <!-- stickers -->
+    <string name="sticker_tap">TOQUE PARA COLOCAR</string>
+    <string name="sticker_placed">%1$d colocados</string>
+    <string name="sticker_remove_last">REMOVER ÚLTIMO</string>
+    <string name="sticker_clear">LIMPAR</string>
+
+    <!-- recipe -->
+    <string name="recipe_title">RECEITAS</string>
+    <string name="recipe_save">SALVAR LOOK</string>
+    <string name="recipe_empty">Nenhum look salvo. Ajuste um preset e salve aqui.</string>
+    <string name="recipe_delete_hint">segure para apagar</string>
+
+    <!-- histogram -->
+    <string name="histogram">HISTOGRAMA</string>
+
+    <!-- batch -->
+    <string name="batch_title">LOTE</string>
+    <string name="batch_subtitle">um look, várias fotos</string>
+    <string name="batch_step_look">1 · LOOK</string>
+    <string name="batch_step_photos">2 · FOTOS (%1$d)</string>
+    <string name="batch_step_caption">3 · LEGENDA (OPCIONAL)</string>
+    <string name="batch_step_export">4 · EXPORTAR</string>
+    <string name="batch_add_photos">ADICIONAR FOTOS</string>
+    <string name="batch_clear">LIMPAR</string>
+    <string name="batch_caption_placeholder">{n} · {total} · {name}</string>
+    <string name="batch_caption_help">Estampa em todas as fotos. {n} = índice, {total} = total, {name} = nome do arquivo.</string>
+    <string name="batch_apply">APLICAR EM %1$d FOTOS</string>
+    <string name="batch_select_first">SELECIONE LOOK E FOTOS</string>
+    <string name="batch_exporting">EXPORTANDO…</string>
+    <string name="batch_no_projects">Nenhum projeto salvo ainda — edite uma foto primeiro para ter um look.</string>
+    <string name="batch_nothing_selected">Nada selecionado ainda.</string>
+    <string name="batch_done">%1$d fotos exportadas para Pictures/Flow</string>
+    <string name="batch_done_partial">%1$d exportadas · %2$d falharam</string>
+
+    <!-- toasts -->
+    <string name="toast_saved">Salvo na galeria</string>
+    <string name="toast_save_failed">Não foi possível salvar</string>
+    <string name="toast_shared">Pronto para compartilhar</string>
+
+    <!-- onboarding -->
+    <string name="onboard_skip">PULAR</string>
+    <string name="onboard_next">PRÓXIMO</string>
+    <string name="onboard_start">COMEÇAR</string>
+    <string name="onboard_1_title">269 presets de verdade</string>
+    <string name="onboard_1_body">Não são filtros de matriz de cor. São tabelas de 3 dimensões com 4.913 entradas cada — o mesmo padrão usado em cinema.</string>
+    <string name="onboard_2_title">Tudo offline</string>
+    <string name="onboard_2_body">O app não tem permissão de internet. Suas fotos não saem do aparelho porque não existe código que possa enviá-las.</string>
+    <string name="onboard_3_title">Deslize, pinte, arraste</string>
+    <string name="onboard_3_body">Segure a foto para comparar com o original. Use o pincel para aplicar um efeito só onde quiser. Arraste o texto direto na imagem.</string>
+
 </resources>

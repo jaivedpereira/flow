@@ -4,6 +4,8 @@
 
 package com.zyon.flow.ui
 
+import com.zyon.flow.R
+
 import android.graphics.Bitmap
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -52,6 +54,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
@@ -402,7 +405,7 @@ fun EditorScreen(
             }
             Spacer(Modifier.weight(1f))
             Text(
-                text = "Save",
+                text = stringResource(R.string.save),
                 color = if (exportSrc != null && !saving) FlowText else FlowTextDim,
                 style = MaterialTheme.typography.labelMedium,
                 modifier = Modifier
@@ -411,7 +414,7 @@ fun EditorScreen(
                     .padding(horizontal = 10.dp, vertical = 8.dp),
             )
             Text(
-                text = "Publish",
+                text = stringResource(R.string.publish),
                 color = if (exportSrc != null && !saving) FlowCream else FlowTextDim,
                 style = MaterialTheme.typography.labelMedium,
                 fontWeight = FontWeight.SemiBold,
@@ -437,7 +440,7 @@ fun EditorScreen(
                     verticalArrangement = Arrangement.Center,
                 ) {
                     Text(
-                        text = "No photo",
+                        text = stringResource(R.string.no_photo),
                         color = FlowTextDim,
                         style = MaterialTheme.typography.bodyMedium,
                     )
@@ -454,7 +457,7 @@ fun EditorScreen(
                             .padding(horizontal = 22.dp, vertical = 12.dp),
                     ) {
                         Text(
-                            text = "IMPORT PHOTO",
+                            text = stringResource(R.string.home_import),
                             color = FlowBlack,
                             style = MaterialTheme.typography.labelMedium,
                             letterSpacing = 1.5.sp,
@@ -998,7 +1001,7 @@ private fun CubeCarousel(
                     }
                     Spacer(Modifier.height(5.dp))
                     Text(
-                        text = "SAVE",
+                        text = stringResource(R.string.cubes_save),
                         style = MaterialTheme.typography.labelSmall,
                         fontSize = 8.sp,
                         color = FlowTextDim,
@@ -1085,7 +1088,7 @@ private fun IntensityRow(value: Float, onChange: (Float) -> Unit) {
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(
-            text = "INTENSITY",
+            text = stringResource(R.string.effects_intensity),
             style = MaterialTheme.typography.labelSmall,
             fontSize = 9.sp,
             letterSpacing = 1.2.sp,
@@ -1133,18 +1136,18 @@ private fun ModeBar(
         horizontalArrangement = Arrangement.spacedBy(2.dp),
     ) {
         Spacer(Modifier.width(4.dp))
-        ModeItem("Cubes", selected == 0, { CubeGlyph(if (selected == 0) FlowCream else FlowTextDim) }) { onSelect(0) }
-        ModeItem("Efeitos", selected == 1, { SparkGlyph(if (selected == 1) FlowCream else FlowTextDim) }) { onSelect(1) }
-        ModeItem("Adjust", selected == 2, { SlidersGlyph(if (selected == 2) FlowCream else FlowTextDim) }) { onSelect(2) }
-        ModeItem("Curves", selected == 3, { CurveGlyph(if (selected == 3) FlowCream else FlowTextDim) }) { onSelect(3) }
-        ModeItem("HSL", selected == 4, { HslGlyph(if (selected == 4) FlowCream else FlowTextDim) }) { onSelect(4) }
-        ModeItem("Text", selected == 5, { TextGlyph(if (selected == 5) FlowCream else FlowTextDim) }) { onSelect(5) }
-        ModeItem("Sticker", selected == 6, { StickerGlyph(if (selected == 6) FlowCream else FlowTextDim) }) { onSelect(6) }
-        ModeItem("Crop", selected == 7, { CropGlyph(if (selected == 7) FlowCream else FlowTextDim) }) { onSelect(7) }
-        ModeItem("Border", selected == 8, { BorderGlyph(if (selected == 8) FlowCream else FlowTextDim) }) { onSelect(8) }
-        ModeItem("Recipe", selected == 9, { StarGlyph(if (selected == 9) FlowCream else FlowTextDim) }) { onSelect(9) }
-        ModeItem("Split", splitActive, { SplitGlyph(if (splitActive) FlowCream else FlowTextDim) }) { onToggleSplit() }
-        ModeItem("Import", false, { PlusGlyph2(FlowTextDim) }) { onImport() }
+        ModeItem(stringResource(R.string.mode_cubes), selected == 0, { CubeGlyph(if (selected == 0) FlowCream else FlowTextDim) }) { onSelect(0) }
+        ModeItem(stringResource(R.string.mode_effects), selected == 1, { SparkGlyph(if (selected == 1) FlowCream else FlowTextDim) }) { onSelect(1) }
+        ModeItem(stringResource(R.string.mode_adjust), selected == 2, { SlidersGlyph(if (selected == 2) FlowCream else FlowTextDim) }) { onSelect(2) }
+        ModeItem(stringResource(R.string.mode_curves), selected == 3, { CurveGlyph(if (selected == 3) FlowCream else FlowTextDim) }) { onSelect(3) }
+        ModeItem(stringResource(R.string.mode_hsl), selected == 4, { HslGlyph(if (selected == 4) FlowCream else FlowTextDim) }) { onSelect(4) }
+        ModeItem(stringResource(R.string.mode_text), selected == 5, { TextGlyph(if (selected == 5) FlowCream else FlowTextDim) }) { onSelect(5) }
+        ModeItem(stringResource(R.string.mode_sticker), selected == 6, { StickerGlyph(if (selected == 6) FlowCream else FlowTextDim) }) { onSelect(6) }
+        ModeItem(stringResource(R.string.mode_crop), selected == 7, { CropGlyph(if (selected == 7) FlowCream else FlowTextDim) }) { onSelect(7) }
+        ModeItem(stringResource(R.string.mode_border), selected == 8, { BorderGlyph(if (selected == 8) FlowCream else FlowTextDim) }) { onSelect(8) }
+        ModeItem(stringResource(R.string.mode_recipe), selected == 9, { StarGlyph(if (selected == 9) FlowCream else FlowTextDim) }) { onSelect(9) }
+        ModeItem(stringResource(R.string.mode_split), splitActive, { SplitGlyph(if (splitActive) FlowCream else FlowTextDim) }) { onToggleSplit() }
+        ModeItem(stringResource(R.string.mode_import), false, { PlusGlyph2(FlowTextDim) }) { onImport() }
         Spacer(Modifier.width(4.dp))
     }
 }

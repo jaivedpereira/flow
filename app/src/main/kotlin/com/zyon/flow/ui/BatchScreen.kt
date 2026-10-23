@@ -4,6 +4,8 @@
 
 package com.zyon.flow.ui
 
+import com.zyon.flow.R
+
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
@@ -41,6 +43,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
@@ -120,14 +123,14 @@ fun BatchScreen(onBack: () -> Unit) {
             Spacer(Modifier.width(10.dp))
             Column(Modifier.weight(1f)) {
                 Text(
-                    text = "BATCH",
+                    text = stringResource(R.string.batch_title),
                     color = FlowText,
                     style = MaterialTheme.typography.titleLarge,
                     letterSpacing = 4.sp,
                     fontWeight = FontWeight.Bold,
                 )
                 Text(
-                    text = "one look, many photos",
+                    text = stringResource(R.string.batch_subtitle),
                     color = FlowTextDim,
                     style = MaterialTheme.typography.labelSmall,
                     letterSpacing = 0.8.sp,
@@ -138,7 +141,7 @@ fun BatchScreen(onBack: () -> Unit) {
         SectionTitle("1 · LOOK")
         if (projects.isEmpty()) {
             Text(
-                text = "No saved projects yet — edit a photo first so it has a look to copy.",
+                text = stringResource(R.string.batch_no_projects),
                 color = FlowTextDim,
                 style = MaterialTheme.typography.labelSmall,
                 fontSize = 10.sp,
@@ -209,7 +212,7 @@ fun BatchScreen(onBack: () -> Unit) {
 
         if (uris.isEmpty()) {
             Text(
-                text = "Nothing selected yet.",
+                text = stringResource(R.string.batch_nothing_selected),
                 color = FlowTextDim,
                 style = MaterialTheme.typography.labelSmall,
                 fontSize = 10.sp,
@@ -254,7 +257,7 @@ fun BatchScreen(onBack: () -> Unit) {
                 .padding(horizontal = 20.dp),
         )
         Text(
-            text = "Stamp every photo. {n} = index, {total} = count, {name} = file name.",
+            text = stringResource(R.string.batch_caption_help),
             color = FlowTextDim,
             style = MaterialTheme.typography.labelSmall,
             fontSize = 8.sp,
