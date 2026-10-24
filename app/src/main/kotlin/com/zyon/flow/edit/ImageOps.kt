@@ -73,8 +73,9 @@ object ImageOps {
         lut: Lut? = null,
         mask: MaskData? = null,
         customTypeface: ((String?, Boolean) -> android.graphics.Typeface?)? = null,
+        withFinish: Boolean = true,
     ): Bitmap = try {
-        renderInternal(src, state, lut, mask, customTypeface)
+        renderInternal(src, state, lut, mask, customTypeface, withFinish)
     } catch (oom: OutOfMemoryError) {
         val half = Bitmap.createScaledBitmap(
             src,
@@ -83,7 +84,7 @@ object ImageOps {
             true,
         )
         try {
-            val small = renderInternal(half, state, lut, mask, customTypeface)
+            val small = renderInternal(half, state, lut, mask, customTypeface, withFinish)
             val up = Bitmap.createScaledBitmap(small, src.width, src.height, true)
             if (small !== up) small.recycle()
             up
@@ -100,6 +101,7 @@ object ImageOps {
         lut: Lut? = null,
         mask: MaskData? = null,
         customTypeface: ((String?, Boolean) -> android.graphics.Typeface?)? = null,
+        withFinish: Boolean = true,
     ): Bitmap {
         val preset = state.preset
         val adj = state.adjustments
@@ -169,7 +171,12 @@ object ImageOps {
         }
 
         val detail = applyDetail(work, adj.sharpen, adj.clarity)
-        if (detail !== work && work !== src) work.recycle()
+        if (detail !== work) {
+            if (work !== src) work.recycle()
+            work = detail
+        }
+
+        if (!withFinish) return work
 
         val vignette = effectiveVignette(preset, adj)
         val grain = effectiveGrain(preset, adj)
@@ -192,29 +199,79 @@ object ImageOps {
         }
 
         if (grain > 0.001f) {
-            val tile = noiseTile(256)
-            // Two passes do the job of a blend mode on every API level:
-            //   dark pass  = multiply-ish (ink)
-            //   light pass = screen-ish (specular speckle)
-            // Using OVERLAY with a mid-grey tile was a no-op, which is why the
-            // grain slider appeared to do nothing at all.
-            val amp = (grain * 0.62f).coerceIn(0f, 1f)
-            val canvas = Canvas(work)
-            val dark = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                shader = BitmapShader(tile, Shader.TileMode.REPEAT, Shader.TileMode.REPEAT)
-                isFilterBitmap = true
-                alpha = (amp * 132f).toInt().coerceIn(0, 255)
-                xfermode = android.graphics.PorterDuffXfermode(android.graphics.PorterDuff.Mode.MULTIPLY)
+            // Done on the CPU on purpose. Drawing a mid-grey tile with
+            // PorterDuff.MULTIPLY onto the bitmap zeroed the image out: the
+            // xfermode blends against the tile's own alpha, so a semi
+            // transparent grey multiplied the destination down to black.
+            val grained = applyGrain(work, grain)
+            if (grained !== work) {
+                if (work !== src) work.recycle()
+                work = grained
             }
-            canvas.drawRect(0f, 0f, work.width.toFloat(), work.height.toFloat(), dark)
+        }
 
-            val light = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                shader = BitmapShader(tile, Shader.TileMode.REPEAT, Shader.TileMode.REPEAT)
-                isFilterBitmap = true
-                alpha = (amp * 74f).toInt().coerceIn(0, 255)
-                xfermode = android.graphics.PorterDuffXfermode(android.graphics.PorterDuff.Mode.SCREEN)
+        if (!state.overlays.isEmpty) {
+            val composed = state.overlays.apply(work, customTypeface)
+            if (composed !== work) {
+                if (work !== src) work.recycle()
+                work = composed
             }
-            canvas.drawRect(0f, 0f, work.width.toFloat(), work.height.toFloat(), light)
+        }
+
+        if (!state.border.isNone) {
+            val framed = state.border.apply(work)
+            if (framed !== work) {
+                if (work !== src) work.recycle()
+                work = framed
+            }
+        }
+
+        return work
+    }
+
+    /**
+     * Runs only the cheap tail of the pipeline (vignette, grain, overlays,
+     * border) on a frame that already went through the expensive stages.
+     *
+     * This is what keeps the sliders live: dragging grain or vignette re-runs
+     * ~15 ms of work instead of the whole pipeline.
+     */
+    fun applyFinish(
+        src: Bitmap,
+        state: EditState,
+        customTypeface: ((String?, Boolean) -> android.graphics.Typeface?)? = null,
+    ): Bitmap {
+        val preset = state.preset
+        val adj = state.adjustments
+        var work = src
+        val vignette = effectiveVignette(preset, adj)
+        val grain = effectiveGrain(preset, adj)
+
+        if (vignette > 0.001f) {
+            val copy = work.copy(Bitmap.Config.ARGB_8888, true)
+            if (copy != null) {
+                val radius = copy.width.coerceAtLeast(copy.height) * 0.78f
+                val shade = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                    shader = RadialGradient(
+                        copy.width / 2f, copy.height / 2f, radius,
+                        intArrayOf(
+                            android.graphics.Color.TRANSPARENT,
+                            android.graphics.Color.TRANSPARENT,
+                            android.graphics.Color.argb((vignette * 210).toInt(), 0, 0, 0),
+                        ),
+                        floatArrayOf(0.45f, 0.72f, 1f),
+                        Shader.TileMode.CLAMP,
+                    )
+                }
+                Canvas(copy).drawRect(0f, 0f, copy.width.toFloat(), copy.height.toFloat(), shade)
+                work = copy
+            }
+        }
+
+        if (grain > 0.001f) {
+            val grained = applyGrain(work, grain)
+            if (grained !== work && work !== src) work.recycle()
+            work = grained
         }
 
         if (!state.overlays.isEmpty) {
@@ -238,8 +295,29 @@ object ImageOps {
 
     // ---- detail ----------------------------------------------------------
 
+    /** Above this many pixels, sharpening runs on a downscaled copy. */
+    private const val MAX_DETAIL_PIXELS = 2_000_000L
+
     private fun applyDetail(src: Bitmap, sharpen: Float, clarity: Float): Bitmap {
         if (sharpen < 0.005f && clarity < 0.005f) return src
+        // Unsharp masking needs pixels + result + blur scratch: three full-frame
+        // IntArrays. Past ~2 MP that costs more than the effect is worth, so run
+        // it on a downscaled copy and scale the result back up.
+        val totalPixels = src.width.toLong() * src.height.toLong()
+        if (totalPixels > MAX_DETAIL_PIXELS) {
+            val scale = kotlin.math.sqrt(MAX_DETAIL_PIXELS.toDouble() / totalPixels).toFloat()
+            val small = Bitmap.createScaledBitmap(
+                src,
+                (src.width * scale).toInt().coerceAtLeast(1),
+                (src.height * scale).toInt().coerceAtLeast(1),
+                true,
+            )
+            val blurred = applyDetail(small, sharpen, clarity)
+            val back = Bitmap.createScaledBitmap(blurred, src.width, src.height, true)
+            if (blurred !== small) blurred.recycle()
+            if (small !== src) small.recycle()
+            return back
+        }
 
         // Unsharp masking needs two extra full-frame buffers. On a 3000px export
         // that used to be ~280 MB and killed the process. Everything is now sized
@@ -285,6 +363,46 @@ object ImageOps {
             out[i] = (b and 0xFF000000.toInt()) or (r shl 16) or (g shl 8) or bl
             i++
         }
+    }
+
+    /**
+     * Film grain. Additive per-channel noise around the original value, with the
+     * strength scaled so the slider is usable across its whole range: 0 is a
+     * clean frame, 1 is roughly ISO 3200.
+     */
+    private fun applyGrain(src: Bitmap, amount: Float): Bitmap {
+        val w = src.width
+        val h = src.height
+        val px = IntArray(w * h)
+        src.getPixels(px, 0, w, 0, 0, w, h)
+
+        val amt = amount.coerceIn(0f, 1f)
+        // Chroma noise is what makes grain read as film rather than as digital
+        // banding, so blue gets a slightly larger swing than red.
+        val swing = 52f * amt
+        val rnd = java.util.Random(0x60D5EEDL)
+
+        for (i in px.indices) {
+            val p = px[i]
+            val r = (p shr 16) and 0xFF
+            val g = (p shr 8) and 0xFF
+            val b = p and 0xFF
+
+            // one shared luma offset plus a small per-channel delta
+            val luma = ((rnd.nextFloat() - 0.5f) * 2f * swing).toInt()
+            val dr = ((rnd.nextFloat() - 0.5f) * swing * 0.35f).toInt()
+            val dg = ((rnd.nextFloat() - 0.5f) * swing * 0.35f).toInt()
+            val db = ((rnd.nextFloat() - 0.5f) * swing * 0.45f).toInt()
+
+            val nr = (r + luma + dr).coerceIn(0, 255)
+            val ng = (g + luma + dg).coerceIn(0, 255)
+            val nb = (b + luma + db).coerceIn(0, 255)
+            px[i] = (p and 0xFF000000.toInt()) or (nr shl 16) or (ng shl 8) or nb
+        }
+
+        val out = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+        out.setPixels(px, 0, w, 0, 0, w, h)
+        return out
     }
 
     /** Separable box blur, two passes. */

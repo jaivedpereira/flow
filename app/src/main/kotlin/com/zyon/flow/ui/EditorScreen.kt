@@ -290,7 +290,10 @@ fun EditorScreen(
         state.effectId,
         state.effectParam,
         state.presetId,
-        state.adjustments,
+        // Cheap-tail fields are excluded on purpose: fade, vignette and grain
+        // are applied by the finish pass, so moving those sliders must not
+        // rebuild the expensive stages below.
+        state.adjustments.copy(fade = 0f, vignette = 0f, grain = 0f),
         state.transform,
         state.splitShadow,
         state.splitHighlight,
@@ -309,11 +312,28 @@ fun EditorScreen(
         val resolver: (String?, Boolean) -> android.graphics.Typeface? = { name, bold ->
             com.zyon.flow.edit.FontStore.typeface(context, name, bold)
         }
-        lookStage = withContext(Dispatchers.Default) { ImageOps.render(src, full, lut, m, resolver) }
+        // Skip the cheap tail here: grain and vignette are re-applied on every
+        // slider tick by the effect below, without touching the expensive stages.
+        lookStage = withContext(Dispatchers.Default) {
+            ImageOps.render(src, full, lut, m, resolver, withFinish = false)
+        }
     }
 
     // Cheap pass: a single cross-fade. This is what keeps the slider live.
-    LaunchedEffect(lookStage, state.lutIntensity, state.effectIntensity, state.effectId, state.lutKey) {
+    LaunchedEffect(
+        lookStage,
+        state.lutIntensity,
+        state.effectIntensity,
+        state.effectId,
+        state.lutKey,
+        // Only the cheap tail is keyed here, so dragging grain or vignette
+        // never re-runs the expensive stages above.
+        state.adjustments.fade,
+        state.adjustments.vignette,
+        state.adjustments.grain,
+        state.overlays,
+        state.border,
+    ) {
         val src = previewSrc ?: return@LaunchedEffect
         val look = lookStage ?: return@LaunchedEffect
         val amount = when {
@@ -321,8 +341,12 @@ fun EditorScreen(
             state.lutKey != null -> state.lutIntensity
             else -> 1f
         }
+        val resolver: (String?, Boolean) -> android.graphics.Typeface? = { name, bold ->
+            com.zyon.flow.edit.FontStore.typeface(context, name, bold)
+        }
         rendered = withContext(Dispatchers.Default) {
-            if (amount >= 0.999f) look else ImageOps.blend(src, look, amount)
+            val base = if (amount >= 0.999f) look else ImageOps.blend(src, look, amount)
+            ImageOps.applyFinish(base, state, customTypeface = resolver)
         }
     }
 
@@ -377,9 +401,12 @@ fun EditorScreen(
         saving = true
         scope.launch {
             val out = withContext(Dispatchers.Default) {
-                ImageOps.render(src, state, activeLut, mask) { name, bold ->
-                    com.zyon.flow.edit.FontStore.typeface(context, name, bold)
-                }
+                ImageOps.render(
+                    src, state, activeLut, mask,
+                    customTypeface = { name, bold ->
+                        com.zyon.flow.edit.FontStore.typeface(context, name, bold)
+                    },
+                )
             }
             val ok = ImageOps.export(context, out)
             currentUri?.let { ProjectStore.upsert(context, Project.from(it, state)) }
@@ -395,9 +422,12 @@ fun EditorScreen(
         saving = true
         scope.launch {
             val out = withContext(Dispatchers.Default) {
-                ImageOps.render(src, state, activeLut, mask) { name, bold ->
-                    com.zyon.flow.edit.FontStore.typeface(context, name, bold)
-                }
+                ImageOps.render(
+                    src, state, activeLut, mask,
+                    customTypeface = { name, bold ->
+                        com.zyon.flow.edit.FontStore.typeface(context, name, bold)
+                    },
+                )
             }
             val savedUri = ImageOps.exportUri(context, out)
             currentUri?.let { uri ->
