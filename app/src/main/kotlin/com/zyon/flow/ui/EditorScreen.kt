@@ -606,35 +606,7 @@ fun EditorScreen(
                 ) {
                     // Base layer: the edited frame, zoomable by pinch.
                     Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .clipToBounds()
-                            .pointerInput(Unit) {
-                                detectTransformGestures { _, pan, gestureZoom, _ ->
-                                    val next = (zoom * gestureZoom).coerceIn(1f, 6f)
-                                    if (next <= 1.02f) {
-                                        zoom = 1f
-                                        panX = 0f
-                                        panY = 0f
-                                    } else {
-                                        zoom = next
-                                        panX += pan.x
-                                        panY += pan.y
-                                    }
-                                }
-                            }
-                            .pointerInput(Unit) {
-                                detectTapGestures(
-                                    onDoubleTap = {
-                                        // reset, or jump to 2.5x on the spot
-                                        if (zoom > 1.05f) {
-                                            zoom = 1f; panX = 0f; panY = 0f
-                                        } else {
-                                            zoom = 2.5f
-                                        }
-                                    },
-                                )
-                            },
+                        modifier = Modifier.fillMaxSize(),
                         contentAlignment = Alignment.Center,
                     ) {
                         Image(
@@ -713,6 +685,24 @@ fun EditorScreen(
                     Box(
                         modifier = Modifier
                             .fillMaxSize()
+                            // Pinch and pan. Separate modifier so it does not
+                            // compete with the tap detector below.
+                            .pointerInput(Unit) {
+                                detectTransformGestures(
+                                    onGesture = { _, pan, gestureZoom, _ ->
+                                        val next = (zoom * gestureZoom).coerceIn(1f, 6f)
+                                    if (next <= 1.02f) {
+                                        zoom = 1f
+                                        panX = 0f
+                                        panY = 0f
+                                        } else {
+                                            zoom = next
+                                            panX += pan.x
+                                            panY += pan.y
+                                        }
+                                    },
+                                )
+                            }
                             .pointerInput(brushing, previewSrc, canvasSize, splitMode, mode, state.overlays) {
                                 when {
                                     splitMode -> {
@@ -808,13 +798,28 @@ fun EditorScreen(
                                     }
 
                                     else -> {
+                                        // Long press compares with the original.
+                                        // It is a long press rather than a plain
+                                        // press so it does not fight the double
+                                        // tap that drives zoom.
                                         detectTapGestures(
-                                            onPress = {
+                                            onLongPress = {
                                                 holdingOriginal = true
+                                            },
+                                            onPress = {
                                                 try {
                                                     awaitRelease()
                                                 } finally {
                                                     holdingOriginal = false
+                                                }
+                                            },
+                                            onDoubleTap = {
+                                                if (zoom > 1.05f) {
+                                                    zoom = 1f
+                                                    panX = 0f
+                                                    panY = 0f
+                                                } else {
+                                                    zoom = 2.5f
                                                 }
                                             },
                                         )
@@ -824,6 +829,38 @@ fun EditorScreen(
                     )
                 }
             }
+            // Zoom control. Pinch works too, but a visible target is the only
+            // way most people will find it.
+            if (previewSrc != null) {
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(top = 10.dp, end = 12.dp)
+                        .clip(RoundedCornerShape(9.dp))
+                        .background(FlowBlack.copy(alpha = 0.62f))
+                        .clickable {
+                            zoom = when {
+                                zoom < 1.4f -> 2.5f
+                                zoom < 2.9f -> 4f
+                                else -> 1f
+                            }
+                            if (zoom <= 1.02f) {
+                                panX = 0f
+                                panY = 0f
+                            }
+                        }
+                        .padding(horizontal = 10.dp, vertical = 6.dp),
+                ) {
+                    Text(
+                        text = if (zoom <= 1.02f) "1x" else "${zoom.toInt()}x",
+                        color = FlowCream,
+                        style = MaterialTheme.typography.labelSmall,
+                        fontSize = 10.sp,
+                        letterSpacing = 0.5.sp,
+                    )
+                }
+            }
+
             if (holdingOriginal && previewSrc != null) {
                 Pill("ORIGINAL", Modifier.align(Alignment.TopCenter).padding(top = 10.dp), filled = false)
             }
