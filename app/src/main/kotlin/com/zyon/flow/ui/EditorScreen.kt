@@ -55,6 +55,9 @@ import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.ui.res.stringResource
+import androidx.compose.foundation.gestures.detectTransformGestures
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
@@ -134,6 +137,10 @@ fun EditorScreen(
     var canvasSize by remember { mutableStateOf(androidx.compose.ui.unit.IntSize.Zero) }
     var splitMode by remember { mutableStateOf(false) }
     var splitFraction by remember { mutableStateOf(0.5f) }
+    /** Canvas zoom: 1 = fit, up to 6x. Pinch to change, double-tap to reset. */
+    var zoom by remember { mutableStateOf(1f) }
+    var panX by remember { mutableStateOf(0f) }
+    var panY by remember { mutableStateOf(0f) }
     /** Which overlay the user is dragging on the canvas, if any. */
     var draggingOverlayId by remember { mutableStateOf<Long?>(null) }
     var selectedTextId by remember { mutableStateOf<Long?>(null) }
@@ -231,6 +238,9 @@ fun EditorScreen(
     }
 
     LaunchedEffect(photoUri) {
+        zoom = 1f
+        panX = 0f
+        panY = 0f
         recipes = RecipeStore.load(context)
         curvePresets = withContext(Dispatchers.IO) {
             com.zyon.flow.edit.CurveLibrary.BuiltIn + com.zyon.flow.edit.CurveLibrary.load(context)
@@ -292,7 +302,7 @@ fun EditorScreen(
         state.hsl,
     ) {
         val src = previewSrc ?: return@LaunchedEffect
-        delay(50)
+        delay(90)
         val lut = activeLut
         val full = state.copy(lutIntensity = 1f, effectIntensity = 1f)
         val m = mask
@@ -527,13 +537,53 @@ fun EditorScreen(
                         .fillMaxSize()
                         .onSizeChanged { canvasSize = it },
                 ) {
-                    // Base layer: the edited frame.
-                    Image(
-                        bitmap = shown.asImageBitmap(),
-                        contentDescription = "Edited photo",
-                        contentScale = ContentScale.Fit,
-                        modifier = Modifier.fillMaxSize(),
-                    )
+                    // Base layer: the edited frame, zoomable by pinch.
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .clipToBounds()
+                            .pointerInput(Unit) {
+                                detectTransformGestures { _, pan, gestureZoom, _ ->
+                                    val next = (zoom * gestureZoom).coerceIn(1f, 6f)
+                                    if (next <= 1.02f) {
+                                        zoom = 1f
+                                        panX = 0f
+                                        panY = 0f
+                                    } else {
+                                        zoom = next
+                                        panX += pan.x
+                                        panY += pan.y
+                                    }
+                                }
+                            }
+                            .pointerInput(Unit) {
+                                detectTapGestures(
+                                    onDoubleTap = {
+                                        // reset, or jump to 2.5x on the spot
+                                        if (zoom > 1.05f) {
+                                            zoom = 1f; panX = 0f; panY = 0f
+                                        } else {
+                                            zoom = 2.5f
+                                        }
+                                    },
+                                )
+                            },
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Image(
+                            bitmap = shown.asImageBitmap(),
+                            contentDescription = "Edited photo",
+                            contentScale = ContentScale.Fit,
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .graphicsLayer(
+                                    scaleX = zoom,
+                                    scaleY = zoom,
+                                    translationX = panX,
+                                    translationY = panY,
+                                ),
+                        )
+                    }
 
                     // Split compare: the original clipped to the left of the handle.
                     if (splitMode && previewSrc != null) {

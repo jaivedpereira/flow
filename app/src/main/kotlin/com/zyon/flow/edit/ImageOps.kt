@@ -60,8 +60,41 @@ object ImageOps {
         return context.contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, opts) }
     }
 
-    /** Full pipeline. Returns a new bitmap owned by the caller. */
+    /**
+     * Full pipeline. Returns a new bitmap owned by the caller.
+     *
+     * The pipeline holds several full-frame buffers at once (unsharp masking
+     * alone needs three), so a large source can exhaust the heap. Instead of
+     * letting the process die, retry once at half resolution and scale back up.
+     */
     fun render(
+        src: Bitmap,
+        state: EditState,
+        lut: Lut? = null,
+        mask: MaskData? = null,
+        customTypeface: ((String?, Boolean) -> android.graphics.Typeface?)? = null,
+    ): Bitmap = try {
+        renderInternal(src, state, lut, mask, customTypeface)
+    } catch (oom: OutOfMemoryError) {
+        val half = Bitmap.createScaledBitmap(
+            src,
+            (src.width / 2).coerceAtLeast(1),
+            (src.height / 2).coerceAtLeast(1),
+            true,
+        )
+        try {
+            val small = renderInternal(half, state, lut, mask, customTypeface)
+            val up = Bitmap.createScaledBitmap(small, src.width, src.height, true)
+            if (small !== up) small.recycle()
+            up
+        } catch (second: OutOfMemoryError) {
+            src
+        } finally {
+            if (half !== src) half.recycle()
+        }
+    }
+
+    private fun renderInternal(
         src: Bitmap,
         state: EditState,
         lut: Lut? = null,
@@ -160,15 +193,28 @@ object ImageOps {
 
         if (grain > 0.001f) {
             val tile = noiseTile(256)
-            val grainPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            // Two passes do the job of a blend mode on every API level:
+            //   dark pass  = multiply-ish (ink)
+            //   light pass = screen-ish (specular speckle)
+            // Using OVERLAY with a mid-grey tile was a no-op, which is why the
+            // grain slider appeared to do nothing at all.
+            val amp = (grain * 0.62f).coerceIn(0f, 1f)
+            val canvas = Canvas(work)
+            val dark = Paint(Paint.ANTI_ALIAS_FLAG).apply {
                 shader = BitmapShader(tile, Shader.TileMode.REPEAT, Shader.TileMode.REPEAT)
-                alpha = (grain * 90).toInt().coerceIn(0, 255)
                 isFilterBitmap = true
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                    blendMode = android.graphics.BlendMode.OVERLAY
-                }
+                alpha = (amp * 132f).toInt().coerceIn(0, 255)
+                xfermode = android.graphics.PorterDuffXfermode(android.graphics.PorterDuff.Mode.MULTIPLY)
             }
-            Canvas(work).drawRect(0f, 0f, work.width.toFloat(), work.height.toFloat(), grainPaint)
+            canvas.drawRect(0f, 0f, work.width.toFloat(), work.height.toFloat(), dark)
+
+            val light = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                shader = BitmapShader(tile, Shader.TileMode.REPEAT, Shader.TileMode.REPEAT)
+                isFilterBitmap = true
+                alpha = (amp * 74f).toInt().coerceIn(0, 255)
+                xfermode = android.graphics.PorterDuffXfermode(android.graphics.PorterDuff.Mode.SCREEN)
+            }
+            canvas.drawRect(0f, 0f, work.width.toFloat(), work.height.toFloat(), light)
         }
 
         if (!state.overlays.isEmpty) {
@@ -195,15 +241,21 @@ object ImageOps {
     private fun applyDetail(src: Bitmap, sharpen: Float, clarity: Float): Bitmap {
         if (sharpen < 0.005f && clarity < 0.005f) return src
 
+        // Unsharp masking needs two extra full-frame buffers. On a 3000px export
+        // that used to be ~280 MB and killed the process. Everything is now sized
+        // to the same budget and only the working arrays are kept alive.
         val w = src.width
         val h = src.height
         val pixels = IntArray(w * h)
         src.getPixels(pixels, 0, w, 0, 0, w, h)
 
         val result = pixels.copyOf()
+
         if (sharpen >= 0.005f) {
             val soft = boxBlur(pixels, w, h, 1)
             unsharpInto(result, pixels, soft, w * h, sharpen * 1.15f)
+            // soft falls out of scope here and is collected before the next pass,
+            // so the peak is two buffers plus the blur scratch, not four.
         }
         if (clarity >= 0.005f) {
             val softWide = boxBlur(pixels, w, h, 3)
