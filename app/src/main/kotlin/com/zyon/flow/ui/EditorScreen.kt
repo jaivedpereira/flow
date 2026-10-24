@@ -119,6 +119,10 @@ fun EditorScreen(
     val scope = rememberCoroutineScope()
 
     var previewSrc by remember { mutableStateOf<Bitmap?>(null) }
+    /** Half-size copy of previewSrc. Used for in-between frames during a drag. */
+    var fastSrc by remember { mutableStateOf<Bitmap?>(null) }
+    /** The low-res frame produced during a drag, replaced by the full one when it settles. */
+    var fastStage by remember { mutableStateOf<Bitmap?>(null) }
     var exportSrc by remember { mutableStateOf<Bitmap?>(null) }
     var currentUri by remember { mutableStateOf<Uri?>(photoUri) }
     var rendered by remember { mutableStateOf<Bitmap?>(null) }
@@ -238,6 +242,8 @@ fun EditorScreen(
     }
 
     LaunchedEffect(photoUri) {
+        fastStage = null
+        fastSrc = null
         zoom = 1f
         panX = 0f
         panY = 0f
@@ -252,6 +258,14 @@ fun EditorScreen(
         val uri = photoUri ?: return@LaunchedEffect
         previewSrc = ImageOps.load(context, uri, PREVIEW_MAX)
         exportSrc = ImageOps.load(context, uri, EXPORT_MAX)
+        fastSrc = previewSrc?.let { p ->
+            Bitmap.createScaledBitmap(
+                p,
+                (p.width / 2).coerceAtLeast(1),
+                (p.height / 2).coerceAtLeast(1),
+                true,
+            )
+        }
     }
 
     LaunchedEffect(state.lutKey) {
@@ -314,14 +328,35 @@ fun EditorScreen(
         }
         // Skip the cheap tail here: grain and vignette are re-applied on every
         // slider tick by the effect below, without touching the expensive stages.
-        lookStage = withContext(Dispatchers.Default) {
-            ImageOps.render(src, full, lut, m, resolver, withFinish = false)
+        val resolver2: (String?, Boolean) -> android.graphics.Typeface? = { name, bold ->
+            com.zyon.flow.edit.FontStore.typeface(context, name, bold)
         }
+        // Two-speed rendering. This effect re-runs on every state change and the
+        // previous run is cancelled, so:
+        //   - the fast pass fires almost immediately on the half-size source,
+        //     giving feedback while the finger is still moving
+        //   - the full pass only survives if nothing changed for 320 ms, which
+        //     is exactly the "user stopped dragging" case
+        val fast = fastSrc
+        if (fast != null) {
+            delay(40)
+            fastStage = withContext(Dispatchers.Default) {
+                runCatching {
+                    ImageOps.render(fast, full, lut, m, resolver2, withFinish = false)
+                }.getOrNull()
+            }
+            delay(280)
+        }
+        lookStage = withContext(Dispatchers.Default) {
+            ImageOps.render(src, full, lut, m, resolver2, withFinish = false)
+        }
+        fastStage = null
     }
 
     // Cheap pass: a single cross-fade. This is what keeps the slider live.
     LaunchedEffect(
         lookStage,
+        fastStage,
         state.lutIntensity,
         state.effectIntensity,
         state.effectId,
@@ -335,7 +370,8 @@ fun EditorScreen(
         state.border,
     ) {
         val src = previewSrc ?: return@LaunchedEffect
-        val look = lookStage ?: return@LaunchedEffect
+        val look = fastStage ?: lookStage ?: return@LaunchedEffect
+        val blendAgainst = if (fastStage != null) (fastSrc ?: src) else src
         val amount = when {
             state.effectId != "none" -> state.effectIntensity
             state.lutKey != null -> state.lutIntensity
@@ -345,7 +381,8 @@ fun EditorScreen(
             com.zyon.flow.edit.FontStore.typeface(context, name, bold)
         }
         rendered = withContext(Dispatchers.Default) {
-            val base = if (amount >= 0.999f) look else ImageOps.blend(src, look, amount)
+            val base = if (amount >= 0.999f) look
+            else ImageOps.blend(blendAgainst, look, amount)
             ImageOps.applyFinish(base, state, customTypeface = resolver)
         }
     }
