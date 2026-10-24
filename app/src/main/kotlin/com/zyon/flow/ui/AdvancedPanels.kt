@@ -64,6 +64,12 @@ import com.zyon.flow.ui.theme.FlowTextDim
 
 private val CHANNELS = listOf("RGB", "R", "G", "B")
 
+/** Cap on user-placed control points. Past this the curve stops responding. */
+private const val MAX_CURVE_POINTS = 10
+
+/** Minimum horizontal distance between neighbouring points, in 0..1 units. */
+private const val CURVE_MIN_GAP = 0.012f
+
 @Composable
 fun CurvesPanel(
     curves: Curves,
@@ -211,20 +217,30 @@ private fun CurveEditor(
         val px = x.coerceIn(0f, 1f)
         val py = y.coerceIn(0f, 1f)
         val list = points.toMutableList()
+        if (list.isEmpty()) return
+
+        // The curve may have been replaced (reset, preset, another channel)
+        // while a drag was in flight, which leaves dragIndex out of range and
+        // would throw on list[dragIndex].
+        if (dragIndex !in list.indices) dragIndex = -1
+
         if (dragIndex < 0) {
-            // add a point where the user touched
-            if (list.size >= 10) return
+            if (list.size >= MAX_CURVE_POINTS) return
             list.add(CurvePoint(px, py))
             list.sortBy { it.x }
-            dragIndex = list.indexOfFirst { it.x == px && it.y == py }
+            // pick the point we just inserted by position, not by float equality
+            dragIndex = list.indexOfLast { it.x <= px }.coerceIn(0, list.lastIndex)
         } else {
-            if (dragIndex == 0 || dragIndex == list.size - 1) {
-                // endpoints only move vertically
+            if (dragIndex == 0 || dragIndex == list.lastIndex) {
                 list[dragIndex] = list[dragIndex].copy(y = py)
             } else {
-                val lo = list[dragIndex - 1].x + 0.01f
-                val hi = list[dragIndex + 1].x - 0.01f
-                list[dragIndex] = CurvePoint(px.coerceIn(lo, hi), py)
+                val lo = list[dragIndex - 1].x + CURVE_MIN_GAP
+                val hi = list[dragIndex + 1].x - CURVE_MIN_GAP
+                // lo can be greater than hi when two neighbouring points sit
+                // almost on top of each other. Float.coerceIn throws on an
+                // empty range, so pick the midpoint instead.
+                val nx = if (lo <= hi) px.coerceIn(lo, hi) else (lo + hi) * 0.5f
+                list[dragIndex] = CurvePoint(nx.coerceIn(0f, 1f), py)
             }
         }
         points = list

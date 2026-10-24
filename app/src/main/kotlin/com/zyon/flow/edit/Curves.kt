@@ -21,7 +21,14 @@ data class Curve(
 ) {
     /** 256-entry LUT built with monotone cubic interpolation. */
     fun lut(): IntArray {
-        val pts = points.sortedBy { it.x }
+        // Drop points that sit on top of each other: a zero-width segment makes
+        // the slope undefined and used to produce a divide-by-huge value.
+        val raw = points.sortedBy { it.x }
+        val pts = ArrayList<CurvePoint>(raw.size)
+        for (p in raw) {
+            val q = CurvePoint(p.x.coerceIn(0f, 1f), p.y.coerceIn(0f, 1f))
+            if (pts.isEmpty() || q.x - pts.last().x >= 1e-4f) pts.add(q)
+        }
         val out = IntArray(256)
         if (pts.size < 2) {
             for (i in 0..255) out[i] = i

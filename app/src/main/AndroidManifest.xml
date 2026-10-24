@@ -8,6 +8,7 @@
         android:maxSdkVersion="32" />
 
     <application
+        android:localeConfig="@xml/locales_config"
         android:allowBackup="true"
         android:icon="@mipmap/ic_launcher"
         android:roundIcon="@mipmap/ic_launcher_round"
