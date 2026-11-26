@@ -78,6 +78,7 @@
     <string name="adj_vignette">Vinheta</string>
     <string name="adj_grain">Grão</string>
     <string name="adj_sharpen">Nitidez</string>
+    <string name="adj_texture">Textura</string>
     <string name="adj_clarity">Clareza</string>
 
     <!-- hsl -->
@@ -154,6 +155,84 @@
     <string name="toast_saved">Salvo na galeria</string>
     <string name="toast_save_failed">Não foi possível salvar</string>
     <string name="toast_shared">Pronto para compartilhar</string>
+
+    <!-- layers -->
+    <string name="mode_layers">Camadas</string>
+
+    <string name="look_copy">COPIAR</string>
+    <string name="look_paste">COLAR</string>
+    <string name="look_copied">Ajustes copiados</string>
+    <string name="look_pasted">Ajustes aplicados</string>
+
+    <string name="layers_add">+ CAMADA</string>
+    <string name="layers_empty">Nenhuma camada ainda. Toque em + CAMADA e escolha o que ela vai conter.</string>
+    <string name="layers_background">Foto</string>
+    <string name="layers_base_note">CAMADA BASE</string>
+    <string name="layers_hint">Camadas são aplicadas de baixo para cima. Selecione uma para editar o conteúdo dela nas outras abas.</string>
+    <string name="layers_choose">O QUE VAI NESTA CAMADA?</string>
+    <string name="layers_kind_cube">Cubo (LUT)</string>
+    <string name="layers_kind_colour">Cor</string>
+    <string name="layers_kind_effect">Efeito</string>
+    <string name="layers_kind_text">Texto</string>
+    <string name="layers_kind_sticker">Adesivo</string>
+    <string name="layers_clear">Esvaziar camada</string>
+    <string name="layers_tap_to_fill">TOQUE PARA ESCOLHER</string>
+
+    <string name="adj_whites">Brancos</string>
+    <string name="adj_blacks">Pretos</string>
+    <string name="auto_tone">AUTO</string>
+    <string name="compare_toggle">ANTES/DEPOIS</string>
+    <string name="compare_original">ORIGINAL</string>
+
+    <string name="export_sub">Escolha como salvar</string>
+    <string name="export_destination">Salvo em Pictures/Flow no seu dispositivo</string>
+    <string name="export_lossless_note">PNG não perde qualidade, então a qualidade não se aplica.</string>
+    <string name="export_title">EXPORTAR</string>
+    <string name="export_format">FORMATO</string>
+    <string name="export_size">TAMANHO</string>
+    <string name="export_quality">QUALIDADE</string>
+    <string name="export_do">EXPORTAR</string>
+    <string name="cancel">Cancelar</string>
+
+    <string name="adj_dehaze">Remover névoa</string>
+    <string name="adj_sharpen_mask">Máscara nitidez</string>
+    <string name="adj_denoise_luma">Ruído luma</string>
+    <string name="adj_denoise_colour">Ruído cor</string>
+
+    <string name="crop_persp_v">Perspectiva V</string>
+    <string name="crop_persp_h">Perspectiva H</string>
+    <string name="spot_tool">REMOVER</string>
+    <string name="spot_undo">DESFAZER</string>
+    <string name="spot_clear">LIMPAR</string>
+
+    <!-- library -->
+    <string name="library_tagline">SEU ESTÚDIO CRIATIVO</string>
+    <string name="nav_home">Início</string>
+    <string name="nav_photos">Minhas fotos</string>
+    <string name="hero_pill">FEITO PARA CRIAR</string>
+    <string name="hero_title">Sua foto. Um novo olhar.</string>
+    <string name="hero_sub">Transforme o que você vê.</string>
+    <string name="hero_cta">Nova foto</string>
+    <string name="home_recent">Edições recentes</string>
+    <string name="home_see_all">Ver todas →</string>
+    <string name="photos_sub">Seu olhar, em um só lugar.</string>
+    <string name="filter_all">Todas</string>
+    <string name="filter_fav">Favoritas</string>
+    <string name="filter_albums">Álbuns</string>
+    <string name="sort_recent">Mais recentes</string>
+    <string name="select_mode">Selecionar</string>
+    <string name="tag_edited">Editada</string>
+    <string name="photos_footer">fotos · Salvas neste dispositivo</string>
+    <string name="photos_empty">Nenhuma foto neste filtro ainda.</string>
+    <string name="albums_hint">Crie um álbum para agrupar suas fotos.</string>
+    <string name="album_create">Crie seu primeiro álbum</string>
+    <string name="album_create_sub">Agrupe fotos do seu jeito.</string>
+    <string name="add_to_album">ADICIONAR AO ÁLBUM</string>
+    <string name="album_name">NOME DO ÁLBUM</string>
+    <string name="album_create_do">CRIAR</string>
+    <string name="delete_photo_q">Excluir esta foto?</string>
+    <string name="delete_photo_body">A cópia no Flow será removida. O original na galeria não é afetado.</string>
+    <string name="delete">Excluir</string>
 
     <!-- onboarding -->
     <string name="onboard_skip">PULAR</string>

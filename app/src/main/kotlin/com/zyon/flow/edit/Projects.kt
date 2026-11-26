@@ -33,9 +33,19 @@ data class Project(
     val vignette: Float,
     val grain: Float,
     val sharpen: Float,
+    val texture: Float = 0f,
     val clarity: Float,
     val highlights: Float,
     val shadows: Float,
+    val whites: Float = 0f,
+    val blacks: Float = 0f,
+    val dehaze: Float = 0f,
+    val denoiseColour: Float = 0f,
+    val denoiseLuma: Float = 0f,
+    val sharpenMask: Float = 0f,
+    val perspectiveV: Float = 0f,
+    val perspectiveH: Float = 0f,
+    val spotsJson: String = "[]",
     val vibrance: Float,
     val hueShift: Float,
     val rotation: Int,
@@ -48,6 +58,10 @@ data class Project(
     val borderColor: Int,
     val borderRounded: Float,
     val useMask: Boolean,
+    /** User layer stack, encoded as JSON. Empty for projects made before layers. */
+    val layersJson: String = "[]",
+    /** Starred by the user, shown under the Favourites filter. */
+    val favorite: Boolean = false,
     val updatedAt: Long,
 ) {
     fun toState(): EditState = EditState(
@@ -66,9 +80,16 @@ data class Project(
             vignette = vignette,
             grain = grain,
             sharpen = sharpen,
+            texture = texture,
             clarity = clarity,
             highlights = highlights,
             shadows = shadows,
+            whites = whites,
+            blacks = blacks,
+            dehaze = dehaze,
+            denoiseColour = denoiseColour,
+            denoiseLuma = denoiseLuma,
+            sharpenMask = sharpenMask,
             vibrance = vibrance,
             hueShift = hueShift,
         ),
@@ -77,16 +98,34 @@ data class Project(
             flipH = flipH,
             straighten = straighten,
             aspect = aspect,
+            perspectiveV = perspectiveV,
+            perspectiveH = perspectiveH,
         ),
+        spots = com.zyon.flow.edit.SpotCodec.decode(spotsJson),
         curves = CurveCodec.decodeCurves(curvesJson),
         hsl = CurveCodec.decodeHsl(hslJson),
         border = Border(width = borderWidth, color = borderColor, rounded = borderRounded),
         useMask = useMask,
+        layers = LayerCodec.decode(layersJson),
     )
 
     fun uri(): Uri = Uri.parse(photoUri)
 
     companion object {
+        /**
+         * Re-saving an edited project must not clear its star. The editor builds a
+         * fresh Project and knows nothing about the library flags, so the star is
+         * carried through here.
+         */
+        private val favoriteCache = HashMap<Long, Boolean>()
+
+        private fun favoriteOfId(id: Long): Boolean = favoriteCache[id] ?: false
+
+        fun rememberFavorites(projects: List<Project>) {
+            favoriteCache.clear()
+            projects.forEach { favoriteCache[it.id] = it.favorite }
+        }
+
         fun from(uri: Uri, state: EditState, id: Long = System.currentTimeMillis()): Project = Project(
             id = id,
             photoUri = uri.toString(),
@@ -104,9 +143,19 @@ data class Project(
             vignette = state.adjustments.vignette,
             grain = state.adjustments.grain,
             sharpen = state.adjustments.sharpen,
+            texture = state.adjustments.texture,
             clarity = state.adjustments.clarity,
             highlights = state.adjustments.highlights,
             shadows = state.adjustments.shadows,
+            whites = state.adjustments.whites,
+            blacks = state.adjustments.blacks,
+            dehaze = state.adjustments.dehaze,
+            denoiseColour = state.adjustments.denoiseColour,
+            denoiseLuma = state.adjustments.denoiseLuma,
+            sharpenMask = state.adjustments.sharpenMask,
+            perspectiveV = state.transform.perspectiveV,
+            perspectiveH = state.transform.perspectiveH,
+            spotsJson = com.zyon.flow.edit.SpotCodec.encode(state.spots),
             vibrance = state.adjustments.vibrance,
             hueShift = state.adjustments.hueShift,
             rotation = state.transform.rotation,
@@ -119,6 +168,8 @@ data class Project(
             borderColor = state.border.color,
             borderRounded = state.border.rounded,
             useMask = state.useMask,
+            layersJson = LayerCodec.encode(state.layers),
+            favorite = favoriteOfId(id),
             updatedAt = System.currentTimeMillis(),
         )
     }
@@ -224,9 +275,19 @@ object ProjectStore {
         vignette = o.optDouble("vignette", 0.0).toFloat(),
         grain = o.optDouble("grain", 0.0).toFloat(),
         sharpen = o.optDouble("sharpen", 0.0).toFloat(),
+            texture = o.optDouble("texture", 0.0).toFloat(),
         clarity = o.optDouble("clarity", 0.0).toFloat(),
         highlights = o.optDouble("highlights", 0.0).toFloat(),
         shadows = o.optDouble("shadows", 0.0).toFloat(),
+        whites = o.optDouble("whites", 0.0).toFloat(),
+        blacks = o.optDouble("blacks", 0.0).toFloat(),
+        dehaze = o.optDouble("dehaze", 0.0).toFloat(),
+        denoiseColour = o.optDouble("denoiseColour", 0.0).toFloat(),
+        denoiseLuma = o.optDouble("denoiseLuma", 0.0).toFloat(),
+        sharpenMask = o.optDouble("sharpenMask", 0.0).toFloat(),
+        perspectiveV = o.optDouble("perspectiveV", 0.0).toFloat(),
+        perspectiveH = o.optDouble("perspectiveH", 0.0).toFloat(),
+        spotsJson = o.optString("spotsJson", "[]"),
         vibrance = o.optDouble("vibrance", 0.0).toFloat(),
         hueShift = o.optDouble("hueShift", 0.0).toFloat(),
         rotation = o.optInt("rotation", 0),
@@ -239,6 +300,8 @@ object ProjectStore {
         borderColor = o.optInt("borderColor", 0xFFFFFFFF.toInt()),
         borderRounded = o.optDouble("borderRounded", 0.0).toFloat(),
         useMask = o.optBoolean("useMask", false),
+        layersJson = o.optString("layersJson", "[]"),
+        favorite = o.optBoolean("favorite", false),
         updatedAt = o.optLong("updatedAt", 0L),
     )
 
@@ -263,9 +326,19 @@ object ProjectStore {
                     put("vignette", p.vignette.toDouble())
                     put("grain", p.grain.toDouble())
                     put("sharpen", p.sharpen.toDouble())
+                    put("texture", p.texture.toDouble())
                     put("clarity", p.clarity.toDouble())
                     put("highlights", p.highlights.toDouble())
                     put("shadows", p.shadows.toDouble())
+                    put("whites", p.whites.toDouble())
+                    put("blacks", p.blacks.toDouble())
+                    put("dehaze", p.dehaze.toDouble())
+                    put("denoiseColour", p.denoiseColour.toDouble())
+                    put("denoiseLuma", p.denoiseLuma.toDouble())
+                    put("sharpenMask", p.sharpenMask.toDouble())
+                    put("perspectiveV", p.perspectiveV.toDouble())
+                    put("perspectiveH", p.perspectiveH.toDouble())
+                    put("spotsJson", p.spotsJson)
                     put("vibrance", p.vibrance.toDouble())
                     put("hueShift", p.hueShift.toDouble())
                     put("rotation", p.rotation)
@@ -278,6 +351,8 @@ object ProjectStore {
                     put("borderColor", p.borderColor)
                     put("borderRounded", p.borderRounded.toDouble())
                     put("useMask", p.useMask)
+                    put("layersJson", p.layersJson)
+                    put("favorite", p.favorite)
                     put("updatedAt", p.updatedAt)
                 },
             )
@@ -291,6 +366,14 @@ object ProjectStore {
         val next = (current.filterNot { it.photoUri == project.photoUri } + project)
             .sortedByDescending { it.updatedAt }
         save(context, next)
+        return next
+    }
+
+    /** Star or unstar a photo without touching anything else. */
+    fun toggleFavorite(context: Context, id: Long): List<Project> {
+        val next = load(context).map { if (it.id == id) it.copy(favorite = !it.favorite) else it }
+        save(context, next)
+        Project.rememberFavorites(next)
         return next
     }
 

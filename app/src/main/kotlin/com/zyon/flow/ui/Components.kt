@@ -29,6 +29,8 @@ import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
@@ -171,13 +173,15 @@ fun AdjustRow(
         Slider(
             value = value,
             onValueChange = onChange,
+            modifier = Modifier.weight(1f).pointerInput(Unit) {
+                detectTapGestures(onDoubleTap = { onChange(0f) })
+            },
             valueRange = -1f..1f,
             colors = SliderDefaults.colors(
                 thumbColor = FlowCream,
                 activeTrackColor = FlowCream.copy(alpha = 0.7f),
                 inactiveTrackColor = FlowLine,
             ),
-            modifier = Modifier.weight(1f),
         )
         Text(
             text = (value * 100).toInt().toString(),
@@ -212,13 +216,16 @@ fun UnitAdjustRow(
         Slider(
             value = value,
             onValueChange = onChange,
+            // double tap resets, the interaction people expect from a slider
+            modifier = Modifier.weight(1f).pointerInput(Unit) {
+                detectTapGestures(onDoubleTap = { onChange(0f) })
+            },
             valueRange = 0f..1f,
             colors = SliderDefaults.colors(
                 thumbColor = FlowCream,
                 activeTrackColor = FlowCream.copy(alpha = 0.7f),
                 inactiveTrackColor = FlowLine,
             ),
-            modifier = Modifier.weight(1f),
         )
         Text(
             text = (value * 100).toInt().toString(),

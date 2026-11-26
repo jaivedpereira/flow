@@ -78,6 +78,7 @@
     <string name="adj_vignette">Vignette</string>
     <string name="adj_grain">Grain</string>
     <string name="adj_sharpen">Sharpen</string>
+    <string name="adj_texture">Texture</string>
     <string name="adj_clarity">Clarity</string>
 
     <!-- hsl -->
@@ -154,6 +155,84 @@
     <string name="toast_saved">Saved to gallery</string>
     <string name="toast_save_failed">Could not save</string>
     <string name="toast_shared">Ready to share</string>
+
+    <!-- layers -->
+    <string name="mode_layers">Layers</string>
+
+    <string name="look_copy">COPY</string>
+    <string name="look_paste">PASTE</string>
+    <string name="look_copied">Look copied</string>
+    <string name="look_pasted">Look applied</string>
+
+    <string name="layers_add">+ LAYER</string>
+    <string name="layers_empty">No layers yet. Tap + LAYER and choose what it should hold.</string>
+    <string name="layers_background">Photo</string>
+    <string name="layers_base_note">BASE LAYER</string>
+    <string name="layers_hint">Layers apply bottom to top. Select one to edit its content in the other tabs.</string>
+    <string name="layers_choose">WHAT GOES IN THIS LAYER?</string>
+    <string name="layers_kind_cube">Cube (LUT)</string>
+    <string name="layers_kind_colour">Colour</string>
+    <string name="layers_kind_effect">Effect</string>
+    <string name="layers_kind_text">Text</string>
+    <string name="layers_kind_sticker">Sticker</string>
+    <string name="layers_clear">Empty this layer</string>
+    <string name="layers_tap_to_fill">TAP TO CHOOSE</string>
+
+    <string name="adj_whites">Whites</string>
+    <string name="adj_blacks">Blacks</string>
+    <string name="auto_tone">AUTO</string>
+    <string name="compare_toggle">BEFORE/AFTER</string>
+    <string name="compare_original">ORIGINAL</string>
+
+    <string name="export_sub">Choose how to save</string>
+    <string name="export_destination">Saved to Pictures/Flow on your device</string>
+    <string name="export_lossless_note">PNG is lossless, so quality does not apply.</string>
+    <string name="export_title">EXPORT</string>
+    <string name="export_format">FORMAT</string>
+    <string name="export_size">SIZE</string>
+    <string name="export_quality">QUALITY</string>
+    <string name="export_do">EXPORT</string>
+    <string name="cancel">Cancel</string>
+
+    <string name="adj_dehaze">Dehaze</string>
+    <string name="adj_sharpen_mask">Sharpen mask</string>
+    <string name="adj_denoise_luma">Luma noise</string>
+    <string name="adj_denoise_colour">Colour noise</string>
+
+    <string name="crop_persp_v">Perspective V</string>
+    <string name="crop_persp_h">Perspective H</string>
+    <string name="spot_tool">REMOVE</string>
+    <string name="spot_undo">UNDO</string>
+    <string name="spot_clear">CLEAR</string>
+
+    <!-- library -->
+    <string name="library_tagline">YOUR CREATIVE STUDIO</string>
+    <string name="nav_home">Home</string>
+    <string name="nav_photos">My photos</string>
+    <string name="hero_pill">MADE TO CREATE</string>
+    <string name="hero_title">Your photo. A new eye.</string>
+    <string name="hero_sub">Transform what you see.</string>
+    <string name="hero_cta">New photo</string>
+    <string name="home_recent">Recent edits</string>
+    <string name="home_see_all">See all →</string>
+    <string name="photos_sub">Your eye, in one place.</string>
+    <string name="filter_all">All</string>
+    <string name="filter_fav">Favourites</string>
+    <string name="filter_albums">Albums</string>
+    <string name="sort_recent">Most recent</string>
+    <string name="select_mode">Select</string>
+    <string name="tag_edited">Edited</string>
+    <string name="photos_footer">photos · Saved on this device</string>
+    <string name="photos_empty">No photos under this filter yet.</string>
+    <string name="albums_hint">Create an album to group your photos.</string>
+    <string name="album_create">Create your first album</string>
+    <string name="album_create_sub">Group photos your way.</string>
+    <string name="add_to_album">ADD TO ALBUM</string>
+    <string name="album_name">ALBUM NAME</string>
+    <string name="album_create_do">CREATE</string>
+    <string name="delete_photo_q">Delete this photo?</string>
+    <string name="delete_photo_body">The copy inside Flow is removed. The original in your gallery is untouched.</string>
+    <string name="delete">Delete</string>
 
     <!-- onboarding -->
     <string name="onboard_skip">SKIP</string>

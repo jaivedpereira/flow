@@ -34,10 +34,24 @@ data class Adjustments(
     val fade: Float = 0f,         // 0..1
     val vignette: Float = 0f,     // 0..1
     val grain: Float = 0f,        // 0..1
-    val sharpen: Float = 0f,      // 0..1
+    val sharpen: Float = 0f,
+    /** Medium-radius detail: Lightroom's Texture. */
+    val texture: Float = 0f,      // 0..1
     val clarity: Float = 0f,      // 0..1
     val highlights: Float = 0f,   // -1..1
     val shadows: Float = 0f,      // -1..1
+    /** Moves the white point: punches the top of the range. */
+    val whites: Float = 0f,       // -1..1
+    /** Moves the black point: sets how deep the shadows sit. */
+    val blacks: Float = 0f,       // -1..1
+    /** Removes atmospheric haze. Negative adds it, which is a look in itself. */
+    val dehaze: Float = 0f,       // -1..1
+    /** Colour noise reduction, the kind that shows up as speckle in shadows. */
+    val denoiseColour: Float = 0f, // 0..1
+    /** Luminance noise reduction. Softer, blurs detail as it rises. */
+    val denoiseLuma: Float = 0f,   // 0..1
+    /** How much of the sharpening is restricted to real edges. */
+    val sharpenMask: Float = 0f,   // 0..1
     val vibrance: Float = 0f,     // -1..1
     val hueShift: Float = 0f,     // -1..1  (one full turn)
 )

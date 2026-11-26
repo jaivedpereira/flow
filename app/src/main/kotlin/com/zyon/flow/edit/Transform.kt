@@ -13,6 +13,10 @@ data class Transform(
     val flipH: Boolean = false,
     val straighten: Float = 0f,   // -15..15 degrees
     val aspect: Float? = null,    // width/height ratio, null = original
+    /** Leans the top edge in or out. Corrects a building shot looking up. */
+    val perspectiveV: Float = 0f, // -1..1
+    /** Leans the left edge in or out. */
+    val perspectiveH: Float = 0f, // -1..1
 )
 
 /** Everything that defines the current look. */
@@ -44,6 +48,12 @@ data class EditState(
     val maskAdditive: Boolean = false,
     /** Text captions and stickers drawn above the photo. */
     val overlays: Overlays = Overlays(),
+    /** Blemish patches, applied after geometry and before the look. */
+    val spots: List<Spot> = emptyList(),
+    /** User layers, bottom of the stack first. Rendered after the base look. */
+    val layers: List<PhotoLayer> = emptyList(),
+    /** Which layer the editing panels act on. Null edits the base look. */
+    val selectedLayerId: Long? = null,
     /** A .cube the user imported this session; takes precedence over lutKey. */
     val customLut: Lut? = null,
     /** Display name of the imported cube. */
@@ -82,11 +92,54 @@ object Geometry {
             out = if (t.straighten != 0f) trimRotatedCorners(rotated, t.straighten) else rotated
         }
 
+        // Perspective before the crop, so the crop frames the corrected image.
+        if (t.perspectiveV != 0f || t.perspectiveH != 0f) {
+            out = applyPerspective(out, t.perspectiveV, t.perspectiveH)
+        }
+
         val ratio = t.aspect
         if (ratio != null && ratio > 0f) {
             out = cropToAspect(out, ratio)
         }
         return out
+    }
+
+    /**
+     * Keystone correction with a four-point homography.
+     *
+     * Leaning the top edge inward fixes the converging verticals you get shooting
+     * a building from below; leaning it out does the opposite. The scale is kept
+     * so the middle of the frame does not change size, which stops the correction
+     * from feeling like a zoom.
+     */
+    private fun applyPerspective(src: Bitmap, v: Float, h: Float): Bitmap {
+        val w = src.width.toFloat()
+        val hh = src.height.toFloat()
+        val kv = v.coerceIn(-1f, 1f) * 0.28f
+        val kh = h.coerceIn(-1f, 1f) * 0.28f
+
+        // destination corners stay put; the source quad is what bends
+        val srcPts = floatArrayOf(
+            w * kh, hh * kv,
+            w * (1f - kh), hh * kv,
+            w * (1f + kh), hh * (1f - kv),
+            w * -kh, hh * (1f - kv),
+        )
+        val dstPts = floatArrayOf(
+            0f, 0f,
+            w, 0f,
+            w, hh,
+            0f, hh,
+        )
+
+        val m = Matrix()
+        val ok = m.setPolyToPoly(dstPts, 0, srcPts, 0, 4)
+        if (!ok) return src
+        return try {
+            Bitmap.createBitmap(src, 0, 0, src.width, src.height, m, true)
+        } catch (t: Throwable) {
+            src
+        }
     }
 
     /** Crop the transparent border produced by a small rotation. */

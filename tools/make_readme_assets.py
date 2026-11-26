@@ -166,13 +166,13 @@ def banner():
         x += d.textlength(c, font=f_big) + spacing
 
     f_sub = font_regular(30)
-    sub = "open-source photo editor  ·  imported photos as projects  ·  269 built-in LUTs"
+    sub = "open-source photo editor  ·  layers, masks and 269 built-in LUTs  ·  offline"
     tw = d.textlength(sub, font=f_sub)
     d.text(((Wb - tw) // 2, 420), sub, font=f_sub, fill=DIM)
 
     d.line([(Wb // 2 - 300, 500), (Wb // 2 + 300, 500)], fill=LINE, width=2)
     f_tiny = mono(19)
-    cap = "269 CUBES  ·  13 EFFECTS  ·  8 HSL BANDS  ·  ANDROID"
+    cap = "269 CUBES  ·  13 EFFECTS  ·  LAYERS  ·  5 MASK TYPES  ·  ANDROID"
     tw = d.textlength(cap, font=f_tiny)
     d.text(((Wb - tw) // 2, 528), cap, font=f_tiny, fill=(94, 92, 88))
 

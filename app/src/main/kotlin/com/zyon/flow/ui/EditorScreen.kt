@@ -93,6 +93,9 @@ import com.zyon.flow.edit.Project
 import com.zyon.flow.edit.ProjectStore
 import com.zyon.flow.edit.Recipe
 import com.zyon.flow.edit.RecipeStore
+import com.zyon.flow.ui.theme.glass
+import com.zyon.flow.ui.theme.glassControl
+import com.zyon.flow.ui.theme.GlassTint
 import com.zyon.flow.ui.theme.FlowBlack
 import com.zyon.flow.ui.theme.FlowCream
 import com.zyon.flow.ui.theme.FlowElevated
@@ -100,6 +103,7 @@ import com.zyon.flow.ui.theme.FlowLine
 import com.zyon.flow.ui.theme.FlowSurface
 import com.zyon.flow.ui.theme.FlowText
 import com.zyon.flow.ui.theme.FlowTextDim
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -132,7 +136,12 @@ fun EditorScreen(
     var activeLut by remember { mutableStateOf<Lut?>(null) }
     var mode by remember { mutableIntStateOf(0) }
     var holdingOriginal by remember { mutableStateOf(false) }
+    /** True while any slider is being dragged, so the cheap render can run at full speed. */
+    var interacting by remember { mutableStateOf(false) }
     var saving by remember { mutableStateOf(false) }
+    /** Which stage the export overlay is reporting, and how far along. */
+    var renderStage by remember { mutableStateOf(RenderStage.PREPARING) }
+    var renderProgress by remember { mutableStateOf<Float?>(null) }
     var toast by remember { mutableStateOf<String?>(null) }
     var mask by remember { mutableStateOf(MaskData()) }
     var brushing by remember { mutableStateOf(false) }
@@ -141,6 +150,11 @@ fun EditorScreen(
     var canvasSize by remember { mutableStateOf(androidx.compose.ui.unit.IntSize.Zero) }
     var splitMode by remember { mutableStateOf(false) }
     var splitFraction by remember { mutableStateOf(0.5f) }
+    /** Range-mask controls: luminance band, or hue band. */
+    var rangeMin by remember { mutableStateOf(0f) }
+    var rangeMax by remember { mutableStateOf(0.45f) }
+    var rangeHue by remember { mutableStateOf(30f) }
+    var rangeTolerance by remember { mutableStateOf(40f) }
     /** Canvas zoom: 1 = fit, up to 6x. Pinch to change, double-tap to reset. */
     var zoom by remember { mutableStateOf(1f) }
     var panX by remember { mutableStateOf(0f) }
@@ -152,6 +166,32 @@ fun EditorScreen(
     var fonts by remember { mutableStateOf<List<com.zyon.flow.edit.FontEntry>>(emptyList()) }
     var recipes by remember { mutableStateOf<List<Recipe>>(emptyList()) }
     var histBins by remember { mutableStateOf<IntArray?>(null) }
+    var clipDark by remember { mutableStateOf(0f) }
+    var clipBright by remember { mutableStateOf(0f) }
+    /** Thumbnails for the layer cards, keyed by layer id. */
+    var layerThumbs by remember { mutableStateOf<Map<Long, Bitmap>>(emptyMap()) }
+    /** Small preview of the photo for the base row. */
+    var baseThumb by remember { mutableStateOf<Bitmap?>(null) }
+    /** The layer whose content is being chosen in the picker dialog. */
+    var pickerLayer by remember { mutableStateOf<com.zyon.flow.edit.PhotoLayer?>(null) }
+    /** Undo stack over the whole edit state. */
+    val history = remember { com.zyon.flow.edit.EditHistory() }
+    /** Set while replaying history, so the recorder does not record itself. */
+    var replayingHistory by remember { mutableStateOf(false) }
+    /** Mirrors of the history flags. Kept as state so the buttons definitely
+     *  repaint; reading a plain object inside composition does not subscribe. */
+    var canUndo by remember { mutableStateOf(false) }
+    var canRedo by remember { mutableStateOf(false) }
+    /** Fixed before/after view, as opposed to the long-press peek. */
+    var compareMode by remember { mutableStateOf(false) }
+    /** Export options chosen by the user, remembered for the session. */
+    var exportSettings by remember { mutableStateOf(com.zyon.flow.edit.ExportSettings()) }
+    var showExport by remember { mutableStateOf(false) }
+    /** True while taps on the canvas place a repair patch instead of drawing. */
+    var spotMode by remember { mutableStateOf(false) }
+    var spotRadius by remember { mutableStateOf(0.045f) }
+    /** Cubes referenced by CUBE layers, so the renderer can resolve them. */
+    var layerLuts by remember { mutableStateOf<Map<String, com.zyon.flow.edit.Lut>>(emptyMap()) }
 
     var allEntries by remember { mutableStateOf<List<LutEntry>>(emptyList()) }
     var groups by remember { mutableStateOf<List<String>>(emptyList()) }
@@ -295,6 +335,24 @@ fun EditorScreen(
         }
     }
 
+    val fastRequests = remember { Channel<EditState>(Channel.CONFLATED) }
+    LaunchedEffect(previewSrc, activeLut) {
+        val resolver: (String?, Boolean) -> android.graphics.Typeface? = { name, bold ->
+            com.zyon.flow.edit.FontStore.typeface(context, name, bold)
+        }
+        for (requested in fastRequests) {
+            val fast = fastSrc ?: continue
+            val lut = activeLut
+            val m = mask
+            val out = withContext(Dispatchers.Default) {
+                runCatching {
+                    ImageOps.render(fast, requested, lut, m, resolver, withFinish = false, lutResolver = { key -> layerLuts[key] })
+                }.getOrNull()
+            }
+            if (out != null) fastStage = out
+        }
+    }
+
     // Expensive pass: everything except the intensity blend. Re-runs only when the
     // look changes, so dragging an intensity slider stays real-time below.
     LaunchedEffect(
@@ -316,44 +374,75 @@ fun EditorScreen(
         state.useMask,
         maskVersion,
         state.overlays,
+        // Spot patches and adjustment layers live inside the expensive stages,
+        // so they must retrigger this pass or the preview never updates.
+        state.spots,
+        state.layers,
         state.hsl,
     ) {
         val src = previewSrc ?: return@LaunchedEffect
-        delay(90)
         val lut = activeLut
         val full = state.copy(lutIntensity = 1f, effectIntensity = 1f)
         val m = mask
         val resolver: (String?, Boolean) -> android.graphics.Typeface? = { name, bold ->
             com.zyon.flow.edit.FontStore.typeface(context, name, bold)
         }
-        // Skip the cheap tail here: grain and vignette are re-applied on every
-        // slider tick by the effect below, without touching the expensive stages.
         val resolver2: (String?, Boolean) -> android.graphics.Typeface? = { name, bold ->
             com.zyon.flow.edit.FontStore.typeface(context, name, bold)
         }
-        // Two-speed rendering. This effect re-runs on every state change and the
-        // previous run is cancelled, so:
-        //   - the fast pass fires almost immediately on the half-size source,
-        //     giving feedback while the finger is still moving
-        //   - the full pass only survives if nothing changed for 320 ms, which
-        //     is exactly the "user stopped dragging" case
-        val fast = fastSrc
-        if (fast != null) {
-            delay(40)
-            fastStage = withContext(Dispatchers.Default) {
-                runCatching {
-                    ImageOps.render(fast, full, lut, m, resolver2, withFinish = false)
-                }.getOrNull()
-            }
-            delay(280)
-        }
+
+        // Hand the new state to the fast worker FIRST, before any delay. A
+        // delay here would be cancelled by the next slider value before it ever
+        // ran, which is exactly why dragging tone sliders used to only update on
+        // release.
+        fastRequests.trySend(full)
+
+        // The full-resolution pass only needs to land once the finger stops, so
+        // it stays an effect: every change cancels the previous attempt and only
+        // the last one survives.
+        delay(280)
         lookStage = withContext(Dispatchers.Default) {
-            ImageOps.render(src, full, lut, m, resolver2, withFinish = false)
+            ImageOps.render(src, full, lut, m, resolver2, withFinish = false, lutResolver = { key -> layerLuts[key] })
         }
         fastStage = null
     }
 
     // Cheap pass: a single cross-fade. This is what keeps the slider live.
+    // Fast look, driven by a conflated channel for the same reason as the cheap
+    // tail: a LaunchedEffect keyed on the state cancels its own render as soon as
+    // the next slider value arrives, so during a drag nothing finishes. Exposure
+    // and the other tone controls live in this stage, which is why dragging them
+    // used to only update on release.
+
+    // Cheap tail, driven by a conflated channel rather than by the effect's own
+    // lifecycle. A LaunchedEffect restarted on every value change cancels the
+    // render in flight, so during a drag nothing ever finished. Here the worker
+    // keeps running and simply picks up the newest state, skipping the values it
+    // could not keep up with.
+    val finishRequests = remember { Channel<Unit>(Channel.CONFLATED) }
+    LaunchedEffect(Unit) {
+        val resolver: (String?, Boolean) -> android.graphics.Typeface? = { name, bold ->
+            com.zyon.flow.edit.FontStore.typeface(context, name, bold)
+        }
+        for (tick in finishRequests) {
+            val src = previewSrc ?: continue
+            val look = fastStage ?: lookStage ?: continue
+            val blendAgainst = if (fastStage != null) (fastSrc ?: src) else src
+            val amount = when {
+                state.effectId != "none" -> state.effectIntensity
+                state.lutKey != null -> state.lutIntensity
+                else -> 1f
+            }
+            val snapshot = state
+            val result = withContext(Dispatchers.Default) {
+                val base = if (amount >= 0.999f) look
+                else ImageOps.blend(blendAgainst, look, amount)
+                ImageOps.applyFinish(base, snapshot, customTypeface = resolver)
+            }
+            rendered = result
+        }
+    }
+
     LaunchedEffect(
         lookStage,
         fastStage,
@@ -361,39 +450,73 @@ fun EditorScreen(
         state.effectIntensity,
         state.effectId,
         state.lutKey,
-        // Only the cheap tail is keyed here, so dragging grain or vignette
-        // never re-runs the expensive stages above.
         state.adjustments.fade,
         state.adjustments.vignette,
         state.adjustments.grain,
         state.overlays,
         state.border,
     ) {
-        val src = previewSrc ?: return@LaunchedEffect
-        val look = fastStage ?: lookStage ?: return@LaunchedEffect
-        val blendAgainst = if (fastStage != null) (fastSrc ?: src) else src
-        val amount = when {
-            state.effectId != "none" -> state.effectIntensity
-            state.lutKey != null -> state.lutIntensity
-            else -> 1f
+        finishRequests.trySend(Unit)
+    }
+
+    // Layer thumbnails. One small bitmap per card, rebuilt when the stack or the
+    // content inside it changes.
+    LaunchedEffect(state.layers, previewSrc) {
+        val photo = previewSrc
+        val snapshot = state.layers
+        val built = withContext(Dispatchers.Default) {
+            val map = HashMap<Long, Bitmap>()
+            snapshot.forEach { layer ->
+                runCatching {
+                    com.zyon.flow.edit.LayerThumbs.render(layer, photo, 120)
+                }.getOrNull()?.let { map[layer.id] = it }
+            }
+            map
         }
-        val resolver: (String?, Boolean) -> android.graphics.Typeface? = { name, bold ->
-            com.zyon.flow.edit.FontStore.typeface(context, name, bold)
+        val base = withContext(Dispatchers.Default) {
+            runCatching { com.zyon.flow.edit.LayerThumbs.photo(photo, 120) }.getOrNull()
         }
-        rendered = withContext(Dispatchers.Default) {
-            val base = if (amount >= 0.999f) look
-            else ImageOps.blend(blendAgainst, look, amount)
-            ImageOps.applyFinish(base, state, customTypeface = resolver)
+        // Deliberately not recycled: Compose may still be drawing the previous
+        // set for a frame, and recycling it crashes the canvas.
+        layerThumbs = built
+        if (base != null) baseThumb = base
+
+
+    }
+
+    // Cubes used by layer entries, loaded once per key.
+    LaunchedEffect(state.layers) {
+        val keys = state.layers.mapNotNull { it.lutKey }.toSet() - layerLuts.keys
+        if (keys.isEmpty()) return@LaunchedEffect
+        val loaded = withContext(Dispatchers.IO) {
+            keys.mapNotNull { key ->
+                val l = runCatching { LutPack.load(context, key) }.getOrNull()
+                if (l == null) null else key to l
+            }.toMap()
         }
+        if (loaded.isNotEmpty()) layerLuts = layerLuts + loaded
     }
 
     // Rebuild the mask whenever a gradient shape or its geometry changes.
-    LaunchedEffect(state.maskShape, state.maskGeometry) {
+    LaunchedEffect(
+        state.maskShape,
+        state.maskGeometry,
+        state.maskAdditive,
+        rangeMin,
+        rangeMax,
+        rangeHue,
+        rangeTolerance,
+        previewSrc,
+    ) {
         if (state.maskShape == MaskShape.BRUSH) return@LaunchedEffect
+        val src = previewSrc ?: return@LaunchedEffect
         withContext(Dispatchers.Default) {
+            val add = state.maskAdditive
             when (state.maskShape) {
-                MaskShape.LINEAR -> MaskShapes.fillLinear(mask, state.maskGeometry)
-                MaskShape.RADIAL -> MaskShapes.fillRadial(mask, state.maskGeometry)
+                MaskShape.LINEAR -> MaskShapes.fillLinear(mask, state.maskGeometry, add)
+                MaskShape.RADIAL -> MaskShapes.fillRadial(mask, state.maskGeometry, add)
+                MaskShape.LUMA -> MaskShapes.fillLumaRange(mask, src, rangeMin, rangeMax)
+                MaskShape.COLOUR -> MaskShapes.fillColourRange(mask, src, rangeHue, rangeTolerance)
                 else -> {}
             }
         }
@@ -416,6 +539,13 @@ fun EditorScreen(
     }
 
     LaunchedEffect(rendered) {
+        rendered?.let { frame ->
+            val (d, b) = withContext(Dispatchers.Default) {
+                runCatching { histogramClipping(frame) }.getOrDefault(0f to 0f)
+            }
+            clipDark = d
+            clipBright = b
+        }
         val src = rendered ?: return@LaunchedEffect
         histBins = withContext(Dispatchers.Default) {
             val small = ImageOps.sampleForHistogram(src)
@@ -426,6 +556,25 @@ fun EditorScreen(
         }
     }
 
+    // Seed history once the editor opens.
+    LaunchedEffect(Unit) {
+        history.reset(state)
+        canUndo = history.canUndo
+        canRedo = history.canRedo
+    }
+
+    // Record each distinct state. Coalescing inside EditHistory turns a slider
+    // drag into a single undo step, which is what people expect.
+    LaunchedEffect(state) {
+        if (replayingHistory) {
+            replayingHistory = false
+            return@LaunchedEffect
+        }
+        history.push(state)
+        canUndo = history.canUndo
+        canRedo = history.canRedo
+    }
+
     LaunchedEffect(toast) {
         if (toast != null) {
             delay(1900)
@@ -433,10 +582,40 @@ fun EditorScreen(
         }
     }
 
+
+    // Content picker. A layer is created empty on purpose, so this is where the
+    // user says what it should hold. Without it, adding a layer did nothing.
+    pickerLayer?.let { target ->
+        LayerContentPicker(
+            layer = target,
+            onPick = { content ->
+                state = com.zyon.flow.edit.Layers.applyContent(state, target.id, content)
+                pickerLayer = null
+                if (content == com.zyon.flow.edit.LayerContent.TEXT) {
+                    selectedTextId = target.id
+                }
+                mode = when (content) {
+                    com.zyon.flow.edit.LayerContent.CUBE -> 0
+                    com.zyon.flow.edit.LayerContent.EFFECT -> 1
+                    com.zyon.flow.edit.LayerContent.COLOUR -> 2
+                    com.zyon.flow.edit.LayerContent.TEXT -> 5
+                    com.zyon.flow.edit.LayerContent.STICKER -> 6
+                    com.zyon.flow.edit.LayerContent.EMPTY -> 7
+                }
+            },
+            onDismiss = { pickerLayer = null },
+            backdrop = rendered,
+        )
+    }
+
+
     fun commit(label: String) {
         val src = exportSrc ?: return
         saving = true
+        renderStage = RenderStage.PREPARING
+        renderProgress = null
         scope.launch {
+            renderStage = RenderStage.RENDERING
             val out = withContext(Dispatchers.Default) {
                 ImageOps.render(
                     src, state, activeLut, mask,
@@ -445,7 +624,8 @@ fun EditorScreen(
                     },
                 )
             }
-            val ok = ImageOps.export(context, out)
+            renderStage = RenderStage.WRITING
+            val ok = ImageOps.export(context, out, exportSettings)
             currentUri?.let { ProjectStore.upsert(context, Project.from(it, state)) }
             saving = false
             toast = if (ok) label else "Could not save"
@@ -457,7 +637,10 @@ fun EditorScreen(
     fun commitShare() {
         val src = exportSrc ?: return
         saving = true
+        renderStage = RenderStage.PREPARING
+        renderProgress = null
         scope.launch {
+            renderStage = RenderStage.RENDERING
             val out = withContext(Dispatchers.Default) {
                 ImageOps.render(
                     src, state, activeLut, mask,
@@ -466,7 +649,8 @@ fun EditorScreen(
                     },
                 )
             }
-            val savedUri = ImageOps.exportUri(context, out)
+            renderStage = RenderStage.WRITING
+            val savedUri = ImageOps.exportUri(context, out, exportSettings)
             currentUri?.let { uri ->
                 val id = initial?.id ?: System.currentTimeMillis()
                 ProjectStore.upsert(context, Project.from(uri, state, id))
@@ -489,6 +673,30 @@ fun EditorScreen(
         }
     }
 
+    if (showExport) {
+        ExportSheet(
+            settings = exportSettings,
+            sourceWidth = exportSrc?.width ?: 0,
+            sourceHeight = exportSrc?.height ?: 0,
+            preview = rendered,
+            onChange = { exportSettings = it },
+            onExport = {
+                showExport = false
+                commit("Saved to gallery")
+            },
+            onDismiss = { showExport = false },
+            backdrop = rendered,
+        )
+    }
+
+    // Blocking progress while the full-size render and the file write happen.
+    RenderOverlay(
+        visible = saving,
+        stage = renderStage,
+        progress = renderProgress,
+        preview = rendered,
+    )
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -504,11 +712,53 @@ fun EditorScreen(
                 .padding(horizontal = 14.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
+            // undo / redo
+            Box(
+                modifier = Modifier
+                    .size(30.dp)
+                    .glassControl(shape = CircleShape, tint = GlassTint.CONTROL)
+                    .clickable(enabled = history.canUndo) {
+                        val prev = history.undo() ?: return@clickable
+                        replayingHistory = true
+                        state = prev
+                        canUndo = history.canUndo
+        canRedo = history.canRedo
+                    },
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    text = "↶",
+                    color = if (canUndo) FlowText else FlowTextDim.copy(alpha = 0.3f),
+                    fontSize = 15.sp,
+                )
+            }
+            Spacer(Modifier.width(4.dp))
+            Box(
+                modifier = Modifier
+                    .size(30.dp)
+                    .glassControl(shape = CircleShape, tint = GlassTint.CONTROL)
+                    .clickable(enabled = history.canRedo) {
+                        val next = history.redo() ?: return@clickable
+                        replayingHistory = true
+                        state = next
+                        canUndo = history.canUndo
+        canRedo = history.canRedo
+                    },
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    text = "↷",
+                    color = if (canRedo) FlowText else FlowTextDim.copy(alpha = 0.3f),
+                    fontSize = 15.sp,
+                )
+            }
+            Spacer(Modifier.width(4.dp))
+
             // revert every edit, keeping the imported photo
             Box(
                 modifier = Modifier
-                    .size(34.dp)
-                    .clip(CircleShape)
+                    .size(30.dp)
+                    .glassControl(shape = CircleShape, tint = GlassTint.CONTROL)
                     .clickable(enabled = !state.isPristine) {
                         state = EditState()
                         mask.clear()
@@ -529,8 +779,8 @@ fun EditorScreen(
 
             Box(
                 modifier = Modifier
-                    .size(34.dp)
-                    .clip(CircleShape)
+                    .size(30.dp)
+                    .glassControl(shape = CircleShape, tint = GlassTint.CONTROL)
                     .clickable { onBack() },
                 contentAlignment = Alignment.Center,
             ) {
@@ -542,9 +792,9 @@ fun EditorScreen(
                 color = if (exportSrc != null && !saving) FlowText else FlowTextDim,
                 style = MaterialTheme.typography.labelMedium,
                 modifier = Modifier
-                    .clip(RoundedCornerShape(8.dp))
-                    .clickable(enabled = exportSrc != null && !saving) { commit("Saved to gallery") }
-                    .padding(horizontal = 10.dp, vertical = 8.dp),
+                    .glassControl(shape = RoundedCornerShape(10.dp))
+                    .clickable(enabled = exportSrc != null && !saving) { showExport = true }
+                    .padding(horizontal = 12.dp, vertical = 8.dp),
             )
             Text(
                 text = stringResource(R.string.publish),
@@ -552,9 +802,9 @@ fun EditorScreen(
                 style = MaterialTheme.typography.labelMedium,
                 fontWeight = FontWeight.SemiBold,
                 modifier = Modifier
-                    .clip(RoundedCornerShape(8.dp))
+                    .glassControl(shape = RoundedCornerShape(10.dp), tint = GlassTint.ACTIVE)
                     .clickable(enabled = exportSrc != null && !saving) { commitShare() }
-                    .padding(horizontal = 10.dp, vertical = 8.dp),
+                    .padding(horizontal = 14.dp, vertical = 8.dp),
             )
         }
 
@@ -565,7 +815,7 @@ fun EditorScreen(
                 .fillMaxWidth(),
             contentAlignment = Alignment.Center,
         ) {
-            val shown = if (holdingOriginal) previewSrc else rendered
+            val shown = if (holdingOriginal || compareMode) previewSrc else rendered
             if (shown == null) {
                 Column(
                     modifier = Modifier.fillMaxSize(),
@@ -703,7 +953,7 @@ fun EditorScreen(
                                     },
                                 )
                             }
-                            .pointerInput(brushing, previewSrc, canvasSize, splitMode, mode, state.overlays) {
+                            .pointerInput(brushing, spotMode, previewSrc, canvasSize, splitMode, mode, state.overlays) {
                                 when {
                                     splitMode -> {
                                         // Dragging anywhere moves the divider.
@@ -797,21 +1047,42 @@ fun EditorScreen(
                                         )
                                     }
 
+                                    spotMode -> {
+                                        // Tapping places a repair patch at that
+                                        // point. The source sample is taken from
+                                        // slightly above, which is where a clone
+                                        // stamp would normally pull from.
+                                        detectTapGestures(
+                                            onTap = { offset ->
+                                                if (canvasSize.width > 0 && canvasSize.height > 0) {
+                                                    val nx = offset.x / canvasSize.width
+                                                    val ny = offset.y / canvasSize.height
+                                                    if (nx in 0f..1f && ny in 0f..1f) {
+                                                        state = state.copy(
+                                                            spots = state.spots + com.zyon.flow.edit.SpotRemoval.newSpot(
+                                                                x = nx,
+                                                                y = ny,
+                                                                radius = spotRadius,
+                                                            ),
+                                                        )
+                                                    }
+                                                }
+                                            },
+                                        )
+                                    }
+
                                     else -> {
                                         // Long press compares with the original.
                                         // It is a long press rather than a plain
                                         // press so it does not fight the double
                                         // tap that drives zoom.
+                                        // Long press shows the original. No onPress
+                                        // here: awaitRelease() held the first
+                                        // pointer, which is what stopped pinch from
+                                        // ever seeing two fingers.
                                         detectTapGestures(
                                             onLongPress = {
                                                 holdingOriginal = true
-                                            },
-                                            onPress = {
-                                                try {
-                                                    awaitRelease()
-                                                } finally {
-                                                    holdingOriginal = false
-                                                }
                                             },
                                             onDoubleTap = {
                                                 if (zoom > 1.05f) {
@@ -821,6 +1092,9 @@ fun EditorScreen(
                                                 } else {
                                                     zoom = 2.5f
                                                 }
+                                            },
+                                            onTap = {
+                                                holdingOriginal = false
                                             },
                                         )
                                     }
@@ -836,8 +1110,7 @@ fun EditorScreen(
                     modifier = Modifier
                         .align(Alignment.TopEnd)
                         .padding(top = 10.dp, end = 12.dp)
-                        .clip(RoundedCornerShape(9.dp))
-                        .background(FlowBlack.copy(alpha = 0.62f))
+                        .glassControl(shape = RoundedCornerShape(10.dp))
                         .clickable {
                             zoom = when {
                                 zoom < 1.4f -> 2.5f
@@ -861,6 +1134,26 @@ fun EditorScreen(
                 }
             }
 
+            // fixed before/after badge
+            if (compareMode && previewSrc != null) {
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .padding(bottom = 14.dp)
+                        .glassControl(shape = RoundedCornerShape(9.dp), tint = GlassTint.ACTIVE)
+                        .clickable { compareMode = false }
+                        .padding(horizontal = 12.dp, vertical = 6.dp),
+                ) {
+                    Text(
+                        text = stringResource(R.string.compare_original),
+                        color = FlowCream,
+                        style = MaterialTheme.typography.labelSmall,
+                        fontSize = 9.sp,
+                        letterSpacing = 1.sp,
+                    )
+                }
+            }
+
             if (holdingOriginal && previewSrc != null) {
                 Pill("ORIGINAL", Modifier.align(Alignment.TopCenter).padding(top = 10.dp), filled = false)
             }
@@ -875,6 +1168,15 @@ fun EditorScreen(
                     .fillMaxWidth()
                     .background(FlowSurface),
             ) {
+                // resolved outside the lambdas: stringResource is @Composable only
+                // A layer is the edit target when one is selected and it is not empty.
+        // Everything below reads through these two so the tabs keep working on the
+        // base look when nothing is selected.
+        val selLayer = com.zyon.flow.edit.Layers.selected(state)
+        val editLayer = selLayer?.takeIf { it.content != com.zyon.flow.edit.LayerContent.EMPTY }
+        val copiedMsg = stringResource(R.string.look_copied)
+                val pastedMsg = stringResource(R.string.look_pasted)
+
                 when (mode) {
                     0 -> {
                         if (state.lutKey != null) {
@@ -913,10 +1215,59 @@ fun EditorScreen(
                         )
                     }
                     1 -> Column {
+                        // Spot removal controls
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 20.dp, vertical = 3.dp),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            MiniChip(
+                                label = stringResource(R.string.spot_tool),
+                                enabled = true,
+                            ) {
+                                spotMode = !spotMode
+                                if (spotMode) {
+                                    brushing = false
+                                    state = state.copy(useMask = false)
+                                }
+                            }
+                            if (spotMode) {
+                                MiniChip(
+                                    label = stringResource(R.string.spot_undo),
+                                    enabled = state.spots.isNotEmpty(),
+                                ) {
+                                    state = state.copy(spots = state.spots.dropLast(1))
+                                }
+                                MiniChip(
+                                    label = stringResource(R.string.spot_clear),
+                                    enabled = state.spots.isNotEmpty(),
+                                ) {
+                                    state = state.copy(spots = emptyList())
+                                }
+                            }
+                            Spacer(Modifier.weight(1f))
+                            if (spotMode) {
+                                Text(
+                                    text = "${state.spots.size}",
+                                    color = FlowCream,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontSize = 9.sp,
+                                )
+                            }
+                        }
                         MaskShapeRow(
                             shape = state.maskShape,
                             geometry = state.maskGeometry,
                             additive = state.maskAdditive,
+                            rangeMin = rangeMin,
+                            rangeMax = rangeMax,
+                            rangeHue = rangeHue,
+                            rangeTolerance = rangeTolerance,
+                            onRange = { lo, hi -> rangeMin = lo; rangeMax = hi },
+                            onHue = { rangeHue = it },
+                            onTolerance = { rangeTolerance = it },
                             onAdditive = { state = state.copy(maskAdditive = it) },
                             onShape = {
                                 state = state.copy(maskShape = it, useMask = true)
@@ -948,21 +1299,112 @@ fun EditorScreen(
                             },
                         )
                         EffectsPanel(
-                        selectedId = state.effectId,
-                        thumbs = effectThumbs,
-                        effectParam = state.effectParam,
-                        effectIntensity = state.effectIntensity,
-                        onSelect = { effect: Effect ->
-                            state = state.copy(
-                                effectId = effect.id,
-                                effectParam = effect.paramDefault,
-                            )
+                        selectedId = if (editLayer?.content == com.zyon.flow.edit.LayerContent.EFFECT) {
+                            editLayer.effectId
+                        } else {
+                            state.effectId
                         },
-                        onParamChange = { state = state.copy(effectParam = it) },
-                        onIntensityChange = { state = state.copy(effectIntensity = it) },
+                        thumbs = effectThumbs,
+                        effectParam = if (editLayer?.content == com.zyon.flow.edit.LayerContent.EFFECT) {
+                            editLayer.effectParam
+                        } else {
+                            state.effectParam
+                        },
+                        effectIntensity = if (editLayer?.content == com.zyon.flow.edit.LayerContent.EFFECT) {
+                            editLayer.effectIntensity
+                        } else {
+                            state.effectIntensity
+                        },
+                        onSelect = { effect: Effect ->
+                            if (editLayer?.content == com.zyon.flow.edit.LayerContent.EFFECT) {
+                                state = com.zyon.flow.edit.Layers.update(state, editLayer.id) {
+                                    it.copy(effectId = effect.id, effectParam = effect.paramDefault)
+                                }
+                            } else {
+                                state = state.copy(
+                                    effectId = effect.id,
+                                    effectParam = effect.paramDefault,
+                                )
+                            }
+                        },
+                        onParamChange = { v ->
+                            if (editLayer?.content == com.zyon.flow.edit.LayerContent.EFFECT) {
+                                state = com.zyon.flow.edit.Layers.update(state, editLayer.id) {
+                                    it.copy(effectParam = v)
+                                }
+                            } else {
+                                state = state.copy(effectParam = v)
+                            }
+                        },
+                        onIntensityChange = { v ->
+                            if (editLayer?.content == com.zyon.flow.edit.LayerContent.EFFECT) {
+                                state = com.zyon.flow.edit.Layers.update(state, editLayer.id) {
+                                    it.copy(effectIntensity = v)
+                                }
+                            } else {
+                                state = state.copy(effectIntensity = v)
+                            }
+                        },
                         )
                     }
-                    2 -> AdjustPanel(state.adjustments) { state = state.copy(adjustments = it) }
+                    2 -> AdjustPanel(
+                        adjust = if (editLayer?.content == com.zyon.flow.edit.LayerContent.COLOUR) {
+                            editLayer.adjustments
+                        } else {
+                            state.adjustments
+                        },
+                        bins = histBins,
+                        clipping = clipDark to clipBright,
+                        onAutoTone = {
+                            val base = previewSrc
+                            if (base == null) {
+                                toast = "Photo not ready"
+                            } else {
+                                scope.launch {
+                                    val suggestion = withContext(Dispatchers.Default) {
+                                        com.zyon.flow.edit.AutoTone.suggest(base)
+                                    }
+                                    state = if (editLayer?.content == com.zyon.flow.edit.LayerContent.COLOUR) {
+                                        com.zyon.flow.edit.Layers.update(state, editLayer.id) {
+                                            it.copy(
+                                                adjustments = suggestion.copy(
+                                                    // keep the detail sliders the user set
+                                                    sharpen = it.adjustments.sharpen,
+                                                    clarity = it.adjustments.clarity,
+                                                    texture = it.adjustments.texture,
+                                                    grain = it.adjustments.grain,
+                                                    vignette = it.adjustments.vignette,
+                                                    fade = it.adjustments.fade,
+                                                ),
+                                            )
+                                        }
+                                    } else {
+                                        state.copy(
+                                            adjustments = suggestion.copy(
+                                                sharpen = state.adjustments.sharpen,
+                                                clarity = state.adjustments.clarity,
+                                                texture = state.adjustments.texture,
+                                                grain = state.adjustments.grain,
+                                                vignette = state.adjustments.vignette,
+                                                fade = state.adjustments.fade,
+                                            ),
+                                        )
+                                    }
+                                    toast = "Auto tone applied"
+                                }
+                            }
+                        },
+                        onCompare = { compareMode = !compareMode },
+                        onChange = { newAdj ->
+                            if (editLayer?.content == com.zyon.flow.edit.LayerContent.COLOUR) {
+                                state = com.zyon.flow.edit.Layers.update(state, editLayer.id) {
+                                    it.copy(adjustments = newAdj)
+                                }
+                            } else {
+                                state = state.copy(adjustments = newAdj)
+                            }
+                        },
+                    )
                     3 -> CurvesPanel(
                         curves = state.curves,
                         presets = curvePresets,
@@ -984,7 +1426,32 @@ fun EditorScreen(
                         hsl = state.hsl,
                         onChange = { state = state.copy(hsl = it) },
                     )
-                    5 -> {
+                    5 -> if (editLayer?.content == com.zyon.flow.edit.LayerContent.TEXT) {
+                        val t = editLayer.text
+                            ?: com.zyon.flow.edit.TextLayer(id = editLayer.id, text = "FLOW")
+                        TextPanel(
+                            overlays = com.zyon.flow.edit.Overlays(texts = listOf(t)),
+                            selectedId = t.id,
+                            fonts = fonts,
+                            onSelect = {},
+                            onChange = { ov ->
+                                state = com.zyon.flow.edit.Layers.update(state, editLayer.id) {
+                                    it.copy(text = ov.texts.firstOrNull() ?: t)
+                                }
+                            },
+                            onImportFont = { fontPicker.launch(arrayOf("*/*")) },
+                            onDeleteFont = { entry ->
+                                entry.file?.let { file ->
+                                    scope.launch {
+                                        withContext(Dispatchers.IO) {
+                                            com.zyon.flow.edit.FontStore.delete(context, file)
+                                        }
+                                        fonts = com.zyon.flow.edit.FontStore.list(context)
+                                    }
+                                }
+                            },
+                        )
+                    } else {
                         // Entering Text with nothing selected left the drag dead.
                         if (selectedTextId == null) {
                             selectedTextId = state.overlays.texts.firstOrNull()?.id
@@ -1018,17 +1485,55 @@ fun EditorScreen(
                         },
                         )
                     }
-                    6 -> StickerPanel(
-                        overlays = state.overlays,
-                        onChange = { state = state.copy(overlays = it) },
+                    6 -> if (editLayer?.content == com.zyon.flow.edit.LayerContent.STICKER) {
+                        val s = editLayer.sticker
+                            ?: com.zyon.flow.edit.StickerLayer(id = editLayer.id, emoji = "✦")
+                        StickerPanel(
+                            overlays = com.zyon.flow.edit.Overlays(stickers = listOf(s)),
+                            onChange = { ov ->
+                                state = com.zyon.flow.edit.Layers.update(state, editLayer.id) {
+                                    it.copy(sticker = ov.stickers.firstOrNull() ?: s)
+                                }
+                            },
+                        )
+                    } else {
+                        StickerPanel(
+                            overlays = state.overlays,
+                            onChange = { state = state.copy(overlays = it) },
+                        )
+                    }
+                    7 -> LayersPanel(
+                        state = state,
+                        thumbs = layerThumbs,
+                        baseThumb = baseThumb,
+                        onAddLayer = {
+                            state = com.zyon.flow.edit.Layers.add(state)
+                            // open the picker straight away: a new layer is empty
+                            state.layers.lastOrNull()?.let { pickerLayer = it }
+                        },
+                        onPickContent = { pickerLayer = it },
+                        onSelect = { state = state.copy(selectedLayerId = it) },
+                        onToggleVisible = { state = com.zyon.flow.edit.Layers.toggleVisible(state, it) },
+                        onToggleLock = { state = com.zyon.flow.edit.Layers.toggleLock(state, it) },
+                        onMove = { id, up -> state = com.zyon.flow.edit.Layers.move(state, id, up) },
+                        onDelete = { state = com.zyon.flow.edit.Layers.remove(state, it) },
                     )
-                    7 -> CropPanel(transform = state.transform, onChange = { state = state.copy(transform = it) })
-                    8 -> BorderPanel(
+                    8 -> CropPanel(transform = state.transform, onChange = { state = state.copy(transform = it) })
+                    9 -> BorderPanel(
                         border = state.border,
                         onChange = { state = state.copy(border = it) },
                     )
                     else -> RecipePanel(
                         recipes = recipes,
+                        clipboardHasContent = com.zyon.flow.edit.EditClipboard.hasContent,
+                        onCopyLook = {
+                            com.zyon.flow.edit.EditClipboard.copy(state)
+                            toast = copiedMsg
+                        },
+                        onPasteLook = {
+                            state = com.zyon.flow.edit.EditClipboard.paste(state)
+                            toast = pastedMsg
+                        },
                         onApply = { state = it.toState() },
                         onSave = {
                             val updated = recipes + Recipe.from("Look ${recipes.size + 1}", state)
@@ -1051,10 +1556,13 @@ fun EditorScreen(
                         mode = newMode
                         // Split belongs to the look views; leaving it on across
                         // an editing tab made the canvas feel stuck.
-                        if (newMode == 5 || newMode == 6 || newMode == 7) splitMode = false
-                        // The brush captures drags, so it must release the
-                        // canvas before overlay drag handlers can run.
-                        if (newMode != 1) brushing = false
+                        if (newMode in 5..8) splitMode = false
+                        // The brush and the repair tool both capture canvas
+                        // taps, so both release it when their tab is left.
+                        if (newMode != 1) {
+                            brushing = false
+                            spotMode = false
+                        }
                     },
                     onToggleSplit = {
                         splitMode = !splitMode
@@ -1340,12 +1848,17 @@ private fun ModeBar(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .height(58.dp)
+            .height(60.dp)
+            .glass(
+                shape = RoundedCornerShape(topStart = 18.dp, topEnd = 18.dp),
+                tint = GlassTint.PANEL,
+                elevation = 10.dp,
+            )
             .horizontalScroll(rememberScrollState()),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(2.dp),
     ) {
-        Spacer(Modifier.width(4.dp))
+        Spacer(Modifier.width(6.dp))
         ModeItem(stringResource(R.string.mode_cubes), selected == 0, { CubeGlyph(if (selected == 0) FlowCream else FlowTextDim) }) { onSelect(0) }
         ModeItem(stringResource(R.string.mode_effects), selected == 1, { SparkGlyph(if (selected == 1) FlowCream else FlowTextDim) }) { onSelect(1) }
         ModeItem(stringResource(R.string.mode_adjust), selected == 2, { SlidersGlyph(if (selected == 2) FlowCream else FlowTextDim) }) { onSelect(2) }
@@ -1353,9 +1866,10 @@ private fun ModeBar(
         ModeItem(stringResource(R.string.mode_hsl), selected == 4, { HslGlyph(if (selected == 4) FlowCream else FlowTextDim) }) { onSelect(4) }
         ModeItem(stringResource(R.string.mode_text), selected == 5, { TextGlyph(if (selected == 5) FlowCream else FlowTextDim) }) { onSelect(5) }
         ModeItem(stringResource(R.string.mode_sticker), selected == 6, { StickerGlyph(if (selected == 6) FlowCream else FlowTextDim) }) { onSelect(6) }
-        ModeItem(stringResource(R.string.mode_crop), selected == 7, { CropGlyph(if (selected == 7) FlowCream else FlowTextDim) }) { onSelect(7) }
-        ModeItem(stringResource(R.string.mode_border), selected == 8, { BorderGlyph(if (selected == 8) FlowCream else FlowTextDim) }) { onSelect(8) }
-        ModeItem(stringResource(R.string.mode_recipe), selected == 9, { StarGlyph(if (selected == 9) FlowCream else FlowTextDim) }) { onSelect(9) }
+        ModeItem(stringResource(R.string.mode_layers), selected == 7, { LayersGlyph(if (selected == 7) FlowCream else FlowTextDim) }) { onSelect(7) }
+        ModeItem(stringResource(R.string.mode_crop), selected == 8, { CropGlyph(if (selected == 7) FlowCream else FlowTextDim) }) { onSelect(8) }
+        ModeItem(stringResource(R.string.mode_border), selected == 9, { BorderGlyph(if (selected == 8) FlowCream else FlowTextDim) }) { onSelect(9) }
+        ModeItem(stringResource(R.string.mode_recipe), selected == 10, { StarGlyph(if (selected == 9) FlowCream else FlowTextDim) }) { onSelect(10) }
         ModeItem(stringResource(R.string.mode_split), splitActive, { SplitGlyph(if (splitActive) FlowCream else FlowTextDim) }) { onToggleSplit() }
         ModeItem(stringResource(R.string.mode_import), false, { PlusGlyph2(FlowTextDim) }) { onImport() }
         Spacer(Modifier.width(4.dp))
@@ -1526,8 +2040,37 @@ private fun Pill(text: String, modifier: Modifier = Modifier, filled: Boolean) {
 
 // ---------------------------------------------------------------- panels
 
+/** Small action chip used inside the adjust panel header. */
 @Composable
-private fun AdjustPanel(adjust: Adjustments, onChange: (Adjustments) -> Unit) {
+private fun MiniChip(label: String, enabled: Boolean, onClick: () -> Unit) {
+    Box(
+        modifier = Modifier
+            .glassControl(
+                shape = RoundedCornerShape(8.dp),
+                tint = if (enabled) GlassTint.CONTROL else GlassTint.PANEL,
+            )
+            .clickable(enabled = enabled, onClick = onClick)
+            .padding(horizontal = 10.dp, vertical = 6.dp),
+    ) {
+        Text(
+            text = label,
+            color = if (enabled) FlowText else FlowTextDim.copy(alpha = 0.5f),
+            style = MaterialTheme.typography.labelSmall,
+            fontSize = 8.sp,
+            letterSpacing = 0.5.sp,
+        )
+    }
+}
+
+@Composable
+private fun AdjustPanel(
+    adjust: Adjustments,
+    bins: IntArray?,
+    clipping: Pair<Float, Float>,
+    onChange: (Adjustments) -> Unit,
+    onAutoTone: () -> Unit,
+    onCompare: () -> Unit,
+) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -1535,19 +2078,43 @@ private fun AdjustPanel(adjust: Adjustments, onChange: (Adjustments) -> Unit) {
             .verticalScroll(rememberScrollState())
             .padding(top = 6.dp, bottom = 4.dp),
     ) {
-        AdjustRow("Exposure", adjust.exposure) { onChange(adjust.copy(exposure = it)) }
-        AdjustRow("Contrast", adjust.contrast) { onChange(adjust.copy(contrast = it)) }
-        AdjustRow("Highlights", adjust.highlights) { onChange(adjust.copy(highlights = it)) }
-        AdjustRow("Shadows", adjust.shadows) { onChange(adjust.copy(shadows = it)) }
-        AdjustRow("Saturation", adjust.saturation) { onChange(adjust.copy(saturation = it)) }
-        AdjustRow("Vibrance", adjust.vibrance) { onChange(adjust.copy(vibrance = it)) }
-        AdjustRow("Warmth", adjust.warmth) { onChange(adjust.copy(warmth = it)) }
-        AdjustRow("Hue", adjust.hueShift) { onChange(adjust.copy(hueShift = it)) }
-        UnitAdjustRow("Fade", adjust.fade) { onChange(adjust.copy(fade = it)) }
-        UnitAdjustRow("Vignette", adjust.vignette) { onChange(adjust.copy(vignette = it)) }
-        UnitAdjustRow("Grain", adjust.grain) { onChange(adjust.copy(grain = it)) }
-        UnitAdjustRow("Sharpen", adjust.sharpen) { onChange(adjust.copy(sharpen = it)) }
-        UnitAdjustRow("Clarity", adjust.clarity) { onChange(adjust.copy(clarity = it)) }
+        // Histogram and the two one-tap actions. The histogram was computed but
+        // never actually drawn until this build.
+        Histogram(
+            bins = bins,
+            clipping = clipping,
+            modifier = Modifier.padding(horizontal = 20.dp, vertical = 2.dp),
+        )
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp, vertical = 3.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            MiniChip(stringResource(R.string.auto_tone), true, onAutoTone)
+            MiniChip(stringResource(R.string.compare_toggle), true, onCompare)
+        }
+
+        AdjustRow(stringResource(R.string.adj_exposure), adjust.exposure) { onChange(adjust.copy(exposure = it)) }
+        AdjustRow(stringResource(R.string.adj_contrast), adjust.contrast) { onChange(adjust.copy(contrast = it)) }
+        AdjustRow(stringResource(R.string.adj_highlights), adjust.highlights) { onChange(adjust.copy(highlights = it)) }
+        AdjustRow(stringResource(R.string.adj_shadows), adjust.shadows) { onChange(adjust.copy(shadows = it)) }
+        AdjustRow(stringResource(R.string.adj_whites), adjust.whites) { onChange(adjust.copy(whites = it)) }
+        AdjustRow(stringResource(R.string.adj_blacks), adjust.blacks) { onChange(adjust.copy(blacks = it)) }
+        AdjustRow(stringResource(R.string.adj_saturation), adjust.saturation) { onChange(adjust.copy(saturation = it)) }
+        AdjustRow(stringResource(R.string.adj_vibrance), adjust.vibrance) { onChange(adjust.copy(vibrance = it)) }
+        AdjustRow(stringResource(R.string.adj_warmth), adjust.warmth) { onChange(adjust.copy(warmth = it)) }
+        AdjustRow(stringResource(R.string.adj_hue), adjust.hueShift) { onChange(adjust.copy(hueShift = it)) }
+        AdjustRow(stringResource(R.string.adj_dehaze), adjust.dehaze) { onChange(adjust.copy(dehaze = it)) }
+        UnitAdjustRow(stringResource(R.string.adj_fade), adjust.fade) { onChange(adjust.copy(fade = it)) }
+        UnitAdjustRow(stringResource(R.string.adj_vignette), adjust.vignette) { onChange(adjust.copy(vignette = it)) }
+        UnitAdjustRow(stringResource(R.string.adj_grain), adjust.grain) { onChange(adjust.copy(grain = it)) }
+        UnitAdjustRow(stringResource(R.string.adj_sharpen), adjust.sharpen) { onChange(adjust.copy(sharpen = it)) }
+        UnitAdjustRow(stringResource(R.string.adj_sharpen_mask), adjust.sharpenMask) { onChange(adjust.copy(sharpenMask = it)) }
+        UnitAdjustRow(stringResource(R.string.adj_denoise_luma), adjust.denoiseLuma) { onChange(adjust.copy(denoiseLuma = it)) }
+        UnitAdjustRow(stringResource(R.string.adj_denoise_colour), adjust.denoiseColour) { onChange(adjust.copy(denoiseColour = it)) }
+        UnitAdjustRow(stringResource(R.string.adj_texture), adjust.texture) { onChange(adjust.copy(texture = it)) }
+        UnitAdjustRow(stringResource(R.string.adj_clarity), adjust.clarity) { onChange(adjust.copy(clarity = it)) }
     }
 }
 
@@ -1722,6 +2289,46 @@ private fun TextGlyph(tint: Color) {
 }
 
 @Composable
+private fun LayersGlyph(tint: Color) {
+    androidx.compose.foundation.Canvas(Modifier.size(18.dp)) {
+        val s = size.minDimension
+        val w = s * 0.075f
+        // three stacked planes, offset: the classic layers mark
+        repeat(3) { i ->
+            val y = s * (0.28f + i * 0.22f)
+            drawLine(
+                tint,
+                androidx.compose.ui.geometry.Offset(s * 0.5f, y),
+                androidx.compose.ui.geometry.Offset(s * 0.88f, y + s * 0.11f),
+                strokeWidth = w,
+                cap = androidx.compose.ui.graphics.StrokeCap.Round,
+            )
+            drawLine(
+                tint,
+                androidx.compose.ui.geometry.Offset(s * 0.5f, y),
+                androidx.compose.ui.geometry.Offset(s * 0.12f, y + s * 0.11f),
+                strokeWidth = w,
+                cap = androidx.compose.ui.graphics.StrokeCap.Round,
+            )
+            drawLine(
+                tint,
+                androidx.compose.ui.geometry.Offset(s * 0.12f, y + s * 0.11f),
+                androidx.compose.ui.geometry.Offset(s * 0.5f, y + s * 0.22f),
+                strokeWidth = w,
+                cap = androidx.compose.ui.graphics.StrokeCap.Round,
+            )
+            drawLine(
+                tint,
+                androidx.compose.ui.geometry.Offset(s * 0.88f, y + s * 0.11f),
+                androidx.compose.ui.geometry.Offset(s * 0.5f, y + s * 0.22f),
+                strokeWidth = w,
+                cap = androidx.compose.ui.graphics.StrokeCap.Round,
+            )
+        }
+    }
+}
+
+@Composable
 private fun StickerGlyph(tint: Color) {
     androidx.compose.foundation.Canvas(Modifier.size(18.dp)) {
         val s = size.minDimension
@@ -1823,4 +2430,26 @@ private fun OverlayHandles(
         overlays.texts.filter { !it.isBlank() }.forEach { marker(it.x, it.y, it.id == selectedTextId) }
         overlays.stickers.filter { it.visible }.forEach { marker(it.x, it.y, false) }
     }
+
 }
+
+/** Shadow and highlight clipping fractions for the on-screen histogram. */
+private fun histogramClipping(src: Bitmap, maxDim: Int = 220): Pair<Float, Float> {
+    val small = com.zyon.flow.edit.ImageOps.sampleForHistogram(src, maxDim)
+    val w = small.width
+    val h = small.height
+    val px = IntArray(w * h)
+    small.getPixels(px, 0, w, 0, 0, w, h)
+    var dark = 0
+    var bright = 0
+    for (p in px) {
+        val r = (p shr 16) and 0xFF
+        val g = (p shr 8) and 0xFF
+        val b = p and 0xFF
+        if (r <= 3 && g <= 3 && b <= 3) dark++
+        if (r >= 252 && g >= 252 && b >= 252) bright++
+    }
+    val n = px.size.toFloat().coerceAtLeast(1f)
+    return (dark / n) to (bright / n)
+}
+

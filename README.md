@@ -5,7 +5,8 @@
 <br>
 
 **A free, open-source photo editor for Android.**
-269 real 3D LUT cubes. GrainRad-style effects. No account, no cloud, no subscription.
+
+269 real 3D LUT cubes. Layer stack. Five mask types. No account, no cloud, no subscription.
 
 <br>
 
@@ -14,7 +15,7 @@
 [![Compose](https://img.shields.io/badge/Jetpack%20Compose-1.12-4285F4?style=flat-square&logo=jetpackcompose&logoColor=white)](https://developer.android.com/jetpack/compose)
 [![License](https://img.shields.io/badge/License-GPL%20v3-EDE7DC?style=flat-square)](LICENSE)
 
-[![Release](https://img.shields.io/badge/APK-v1.0-EDE7DC?style=flat-square&logo=android&logoColor=black)](https://github.com/jaivedpereira/flow/releases)
+[![Release](https://img.shields.io/badge/APK-v1.6-EDE7DC?style=flat-square&logo=android&logoColor=black)](https://github.com/jaivedpereira/flow/releases)
 [![Cubes](https://img.shields.io/badge/3D%20LUTs-269-EDE7DC?style=flat-square)](#the-cube-pipeline)
 [![Effects](https://img.shields.io/badge/Effects-13-EDE7DC?style=flat-square)](#effects)
 [![Offline](https://img.shields.io/badge/Network-none-EDE7DC?style=flat-square)](#privacy)
@@ -38,27 +39,22 @@
 **The app**
 - [What it is](#what-it-is)
 - [Screens](#screens)
-- [The pipeline](#the-pipeline)
-- [Cubes](#the-cube-pipeline)
-- [Effects](#effects)
-- [Colour](#colour)
-- [Masking](#masking)
-- [Text & stickers](#text--stickers)
-- [Batch](#batch)
-- [Privacy](#privacy)
+- [Everything in the editor](#everything-in-the-editor)
+- [Layers](#layers)
+- [Masks](#masks)
+- [Export](#export)
 
 </td>
 <td valign="top" width="50%">
 
-**The project**
-- [Install](#install)
-- [Build from source](#build-from-source)
-- [Architecture](#architecture)
-- [Code map](#code-map)
-- [How the LUTs were made](#how-the-luts-were-made)
-- [Roadmap](#roadmap)
-- [Contributing](#contributing)
-- [License](#license)
+**Under the hood**
+- [The cube pipeline](#the-cube-pipeline)
+- [Render pipeline](#render-pipeline)
+- [Effects](#effects)
+- [Real-time strategy](#real-time-strategy)
+- [Performance notes](#performance-notes)
+- [Build](#build)
+- [Privacy](#privacy)
 
 </td>
 </tr>
@@ -68,346 +64,272 @@
 
 ## What it is
 
-Flow is a photo editor built around one idea: **the good stuff should not be behind a
-subscription.** It is a complete implementation of the editing model that makes good mobile
-editors feel good — presets you can browse as live thumbnails, a one-slider
-intensity control, tone curves, selective colour — with every part left open.
+Flow is a photo editor that does one thing properly: applying a look, and giving
+you the controls to bend that look into something of your own.
 
-It also takes the effects from [GrainRad](https://grainrad.com) (ASCII, dithering,
-halftone, CRT, halation) and makes them *non-destructive*, adjustable, and
-maskable — which the web tool cannot do because it processes a single frame.
+It is not a social network, not a subscription, and not a demo. There is no
+account, no upload, no telemetry. Import a photo, edit it, save it back. The whole
+app works in airplane mode because there is nothing for it to talk to.
 
-Everything runs on-device. There is no network permission in the manifest at all.
-
-<div align="center">
-<table>
-<tr>
-<td align="center"><b>269</b><br><sub>3D LUT cubes</sub></td>
-<td align="center"><b>13</b><br><sub>effects</sub></td>
-<td align="center"><b>8</b><br><sub>HSL bands</sub></td>
-<td align="center"><b>12</b><br><sub>pipeline stages</sub></td>
-<td align="center"><b>0</b><br><sub>network calls</sub></td>
-</tr>
-</table>
-</div>
+**What it is not:** a RAW developer, a Photoshop replacement, or an AI editor.
+There is no server, so nothing in Flow pretends to understand your photograph.
 
 ---
 
 ## Screens
 
-<table>
-<tr>
-<td align="center" width="33%">
-<img src="docs/img/shot-home.png" width="240"><br>
-<b>Projects</b><br>
-<sub>Imported photos become projects.<br>Every tile is your own photo,<br>re-rendered with its cube.</sub>
-</td>
-<td align="center" width="33%">
-<img src="docs/img/shot-editor.png" width="240"><br>
-<b>Editor</b><br>
-<sub>12 modes. Live cube thumbnails,<br>real-time intensity,<br>press-and-hold to compare.</sub>
-</td>
-<td align="center" width="33%">
-<img src="docs/img/shot-batch.png" width="240"><br>
-<b>Batch</b><br>
-<sub>One look, 30 photos.<br>Captions with <code>{n}</code> and <code>{total}</code><br>resolved per file.</sub>
-</td>
-</tr>
-</table>
+<div align="center">
+
+<img src="docs/img/shot-home.png" alt="Library" width="240">
+<img src="docs/img/shot-editor.png" alt="Editor" width="240">
+<img src="docs/img/shot-batch.png" alt="Batch" width="240">
+
+<sub><i>Library · Editor · Batch</i></sub>
+
+</div>
+
+### Library
+
+Two tabs. **Início** is a landing page: one hero card that says what the app is
+for, then your six most recent edits. **Minhas fotos** is the library proper.
+
+```
+Todas · Favoritas · Álbuns
+Mais recentes ▾                          Selecionar
+```
+
+Photos are stored as **projects**, not as files in a list: each one holds the
+photo copy plus every edit you made to it, so reopening a project three weeks
+later shows the exact frame you left behind.
+
+Albums reference projects rather than containing them, so one photo can sit in
+several albums and deleting an album never touches a photo.
+
+### About
+
+Version is read from the package at runtime, never typed by hand, so it cannot
+drift from the build you are actually running.
 
 ---
 
-## The pipeline
+## Everything in the editor
 
-Every frame goes through the same twelve stages, in this order. Each stage is
-skippable — if it is a no-op the bitmap is passed through by reference, never copied.
+Twelve tabs, in the order you would reach for them.
 
-<div align="center">
-<img src="docs/img/pipeline.svg" alt="The Flow render pipeline" width="100%">
-</div>
+| Tab | What it holds |
+|---|---|
+| **Cubes** | 269 built-in LUTs plus `.cube` import and export |
+| **Efeitos** | 13 artistic effects, plus spot removal |
+| **Ajustes** | Exposure → blacks, dehaze, texture, noise, with live histogram and clipping warnings |
+| **Curvas** | Master + RGB curves, monotone cubic, save your own sets |
+| **HSL** | 8 colour bands × hue / saturation / luminance |
+| **Texto** | Captions with custom fonts and drop shadows |
+| **Adesivo** | Stickers, draggable on the canvas |
+| **Camadas** | The layer stack |
+| **Cortar** | Aspect, rotate, mirror, straighten, perspective |
+| **Moldura** | Border width, colour, corner radius |
+| **Receita** | Save a look, apply it to another photo, copy / paste |
+| **Split** | Draggable before / after divider |
 
-Two details make this fast enough to feel live:
+Plus, on every screen: **undo / redo** (coalesced, so a slider drag is one step),
+**auto tone**, **hold to compare**, and **pinch to zoom**.
 
-**Split render.** The expensive stages run once, at full strength, into a cached
-`lookStage`. The intensity slider then performs a single cross-fade:
+---
 
-```kotlin
-displayed = blended(original, lookStage, intensity)
+## Layers
+
+A layer starts empty and you decide what it becomes.
+
+```
+Camadas ──────────────────────  [+ CAMADA]
+  ● Texto "FLOW"        TEXT     ◉ 🔒  ↑ ↓  🗑
+  ● Efeito Halation     EFFECT   ◉ 🔒  ↑ ↓  🗑
+  ● Cubo Kodak          CUBE     ◉ 🔒     ↓  🗑
+  ─────────────────────────────────────────────
+  ● Foto                BASE
 ```
 
-Sliding intensity costs ~15 ms per frame instead of the ~150 ms a full re-render
-takes. This is the entire reason the app feels responsive rather than laggy.
+| Kind | What it applies |
+|---|---|
+| **Cubo** | A LUT, with its own intensity |
+| **Cor** | A full manual grade |
+| **Efeito** | Any of the 13 effects |
+| **Texto** | A caption |
+| **Adesivo** | A sticker |
 
-**Luma-preserving HSL.** HSV keeps value constant, so naively desaturating a vivid
-red makes it *paler and brighter*. Flow rescales to the original luma before
-applying the requested luminance change, so a band edit reads as "less red" rather
-than "washed out".
+Layers composite **bottom to top**, and the order is real: a caption under an
+effect layer gets graded with the photo, one above it stays clean.
+
+Selecting a layer makes the other tabs edit *that layer* instead of the base
+photo. Nothing is ever silently redirected — with no layer selected, the tabs go
+back to editing the base.
+
+### Adjustments are not reorderable, and that is deliberate
+
+Content layers (text, stickers) have a z-order you control. Adjustment layers run
+in the pipeline's fixed order. Pretending you could drag a curve below a cube
+would be a list that lies about what the renderer does, so the panel says so
+instead.
+
+---
+
+## Masks
+
+Five ways to say *where* an adjustment lands.
+
+| Shape | Use |
+|---|---|
+| **Pincel** | Paint it by hand |
+| **Linear** | Gradient from one edge |
+| **Radial** | Spotlight |
+| **Luminância** | Only the bright or only the dark pixels |
+| **Cor** | Only hues near a target |
+
+Range masks (luminance and colour) are the useful ones: *vignette only in the
+shadows*, *saturate only the greens*.
+
+Masks can be mixed **additively** — a new gradient added to what you already
+painted instead of replacing it.
+
+---
+
+## Export
+
+```
+FORMATO     JPEG · PNG · WebP
+TAMANHO     Original · 3000 · 2048 · 1080 px
+QUALIDADE   70 → 100
+```
+
+The output size and an estimated file size are shown live, so the choice has a
+cost attached instead of being abstract. PNG is lossless, so the quality slider
+hides itself rather than offering a control with no effect.
+
+Exporting shows a blocking progress overlay with three honest stages —
+**preparing**, **rendering**, **writing** — placed at the real boundaries in the
+code, not on a timer.
 
 ---
 
 ## The cube pipeline
 
-The 269 presets are **real 3D LUTs**, not colour matrices with a nice name.
-
-<details>
-<summary><b>How a <code>.xray</code> cube becomes a Flow preset</b></summary>
-
-<br>
-
-A `.xray` file is a container, not an image:
+A 3D LUT is a cube of colour: sample a coordinate, get the graded colour back.
+Flow ships **269 of them**.
 
 ```
-AES-128-CBC / PKCS7  →  zlib inflate  →  header + N × 17³ LUTs
+luts.bin  7.57 MB  ·  269 cubes  ·  17³ = 4,913 entries each
 ```
 
-Each LUT is **4913 entries of interleaved little-endian `u16` RGB** — 29 478 bytes,
-exactly `17³ × 3 × 2`. Decrypt, inflate, slice, then pack all of them into a single
-`luts.bin` with a small header:
+Stored interleaved as `u16` RGB, 29,478 bytes per cube, with a `FLOWLUT1` header.
+Interleaving matters: the sampler walks R, G, B for one entry, so keeping them
+adjacent means one cache line instead of three.
+
+Sampling is **trilinear** — the eight corners of the enclosing cell, weighted by
+distance. Nearest-neighbour would band on gradients; trilinear is the difference
+between a gradient and a staircase.
+
+The whole table loads once into a `ByteBuffer` and is sampled directly, so
+applying a cube costs one pass and no allocation per frame.
+
+---
+
+## Render pipeline
+
+Twelve stages, in a fixed order. Every one is a real pixel operation.
 
 ```
-magic "FLOWLUT1"
-per cube: u16 key_len, u16 name_len, u16 group_len, strings..., u32 data_len
+geometry  →  cube  →  colour matrix  →  tone  →  curves  →  HSL
+          →  effects  →  detail  →  [layers]  →  vignette  →  grain
+          →  overlays  →  border
 ```
 
-The app memory-maps that file and keeps an `LruCache<String, Lut>(6)`, so scrolling
-the carousel never holds more than six cubes at once.
+<img src="docs/img/pipeline.svg" alt="Pipeline diagram" width="100%">
 
-**Verification that the decryption was actually correct** — two independent checks
-on the decoded data:
-
-| cube | expectation | observed |
-|---|---|---|
-| `exposure` | neutral — R=G=B on the diagonal | ✅ exactly identical |
-| `b1` | monochrome, red→0.09 / green→0.4 / blue→0.2 (Rec.601 luma weights) | ✅ exact |
-
-If the key, the IV, the byte order or the entry stride had been wrong, those two
-would not hold simultaneously.
-
-</details>
-
-<details>
-<summary><b>Import and export <code>.cube</code></b></summary>
-
-<br>
-
-Flow reads and writes the standard Resolve `.cube` format, so a look is portable
-in both directions.
-
-**Import** accepts any `LUT_3D_SIZE` (17³, 33³, 64³), `TITLE`, `DOMAIN_MIN` /
-`DOMAIN_MAX` (rescaled to 0..1 automatically), and `#` comments. `LUT_1D_SIZE` is
-rejected with a clear message rather than producing subtly wrong output.
-
-**Export** writes 6-decimal floats. One non-obvious detail cost a real bug:
-
-```kotlin
-// WRONG on a pt-BR phone — writes "0,123456", unparseable everywhere else
-out.write("%.6f %.6f %.6f\n".format(r, g, b))
-
-// RIGHT — the file format is locale-independent
-out.write(String.format(Locale.US, "%.6f %.6f %.6f\n", r, g, b))
-```
-
-The parser now also tolerates comma decimals, so files written by the buggy build
-can still be read back.
-
-</details>
+**Why this order.** Curves run after the colour matrix because they operate on
+tone that already has the right white balance. HSL runs after curves so a
+saturation push does not shift the hue you just set. Detail runs last in the
+look stages because sharpening amplifies whatever noise the earlier stages
+produced — cleaning before sharpening is the only order that makes sense.
 
 ---
 
 ## Effects
 
-Thirteen effects, ported from GrainRad's WebGPU shaders to plain Kotlin bitmap math.
-All of them are **non-destructive**: they render at full strength and are then
-blended by intensity, which is what makes the slider feel instant.
-
-<div align="center">
-<img src="docs/img/effects-grid.png" alt="Effect validation grid" width="100%">
-<sub><i>Every tile is a real render of the validated algorithm, applied to a procedurally generated frame.</i></sub>
-</div>
+Thirteen, and each one is an algorithm rather than a preset.
 
 <table>
-<tr><th align="left">Effect</th><th align="left">Algorithm</th><th align="left">Parameter</th></tr>
-<tr><td><b>ASCII</b></td><td>luminance → glyph ramp <code>.:-=+*#%@</code></td><td>density</td></tr>
-<tr><td><b>Dither</b></td><td>Floyd–Steinberg error diffusion</td><td>threshold</td></tr>
-<tr><td><b>Bayer</b></td><td>ordered 8×8 dither matrix</td><td>levels</td></tr>
-<tr><td><b>Halftone</b></td><td>dot radius from local luminance</td><td>cell size</td></tr>
-<tr><td><b>Pixelate</b></td><td>downsample + nearest</td><td>block</td></tr>
-<tr><td><b>Posterize</b></td><td>per-channel quantisation</td><td>levels</td></tr>
-<tr><td><b>CRT</b></td><td>periodic scanline darkening</td><td>spacing</td></tr>
-<tr><td><b>Chroma</b></td><td>opposed R/B channel shift</td><td>shift</td></tr>
-<tr><td><b>Halation</b></td><td>blur of highlights + warm gain</td><td>glow</td></tr>
-<tr><td><b>Bloom</b></td><td>blur + screen blend</td><td>radius</td></tr>
-<tr><td><b>Noise</b></td><td>per-channel gaussian</td><td>amount</td></tr>
-<tr><td><b>Datamosh</b></td><td>block displacement</td><td>block</td></tr>
-<tr><td><b>Threshold</b></td><td>hard luminance cut</td><td>cut</td></tr>
+<tr><td valign="top" width="50%">
+
+**Ascii** — luminance to a character ramp
+**Dither** — Floyd–Steinberg error diffusion
+**Bayer** — ordered 4×4 dithering
+**Halftone** — rotated dot screen
+**Pixelate** — block averaging
+**Posterize** — quantised levels
+**CRT** — scanlines with phosphor falloff
+
+</td><td valign="top" width="50%">
+
+**Chroma** — per-channel radial shift
+**Halation** — red-halo bloom off highlights
+**Bloom** — threshold bloom
+**Noise** — colour grain
+**Datamosh** — block displacement
+**Threshold** — hard luminance cut
+
+</td></tr>
 </table>
 
-<details>
-<summary><b>Validation — what was actually checked</b></summary>
-
-<br>
-
-Each algorithm was ported to numpy and compared against expectation before the
-Kotlin was trusted. Standard deviation and unique-value count prove the effect
-is doing real work rather than returning a flat frame:
-
-```
-dither       std=123.7  unique=2    → pure black and white
-bayer        std= 51.0  unique=5    → 5 ordered levels
-posterize    std= 54.4  unique=6    → quantised
-halftone     std= 86.3  unique=2    → dots on white
-pixelate     std= 41.8  unique=118  → real blocks
-```
-
-</details>
+<img src="docs/img/effects-grid.png" alt="Effects grid" width="100%">
 
 ---
 
-## Colour
+## Real-time strategy
 
-<div align="center">
-<img src="docs/img/hsl-wheel.png" alt="HSL — eight colour bands" width="300">
-</div>
+The pipeline is split into two passes, because they have different costs and
+different triggers.
 
-**Selective HSL** — eight bands (`RED · ORANGE · YELLOW · GREEN · CYAN · BLUE ·
-PURPLE · MAGENTA`), each with independent hue, saturation and luminance. Pixels are
-weighted by **angular distance** to the band centre with a cosine falloff over a 45°
-half-width, so bands blend at the edges instead of banding. Achromatic pixels are
-skipped entirely — you can push every slider to the limit and a grey wall will not move.
-
-**Curves** — four channels (RGB master + R/G/B), edited by dragging control points.
-Interpolation is **Fritsch–Carlson monotone cubic**, not plain cubic spline: a
-regular cubic overshoots between control points, and overshoot in a tone curve is
-banding in skin tones. The monotone variant mathematically cannot go backwards.
-
-Eight curve presets ship built-in (`Neutral`, `Film S`, `Lifted Black`, `Faded White`,
-`Punch`, `Cool Shadows`, `Warm Highlights`, `Matte`), and you can save your own.
-
-<details>
-<summary><b>Curve validation</b></summary>
-
-<br>
-
-```
-identity     start=  0 mid=128 end=255  monotonic ✓
-S-contrast   start=  0 mid=131 end=255  monotonic ✓
-lift         start= 30 mid=143 end=255  monotonic ✓
-fade         start= 20 mid=127 end=234  monotonic ✓
-```
-
-And the HSL isolation test on a real photo — only the red band moved,
-29% of pixels stayed bit-identical:
-
-```
-[7] isolation on a real image
-    pixels changed: 71.0%   pixels untouched: 29.0%
-```
-
-</details>
-
----
-
-## Masking
-
-An effect does not have to cover the whole frame. Three mask sources write into the
-same 192×144 float grid, so any effect works with any of them:
-
-| Shape | Use | Controls |
+| Pass | Contents | Runs when |
 |---|---|---|
-| **Brush** | local retouch | soft dab, stroke interpolation so fast drags leave no gaps |
-| **Linear** | sky, horizon, directional fade | feather + invert |
-| **Radial** | spotlight, local vignette | feather + invert |
+| **Expensive** | geometry, cube, matrix, tone, curves, HSL, effects, detail, adjustment layers | the look changes |
+| **Cheap tail** | vignette, grain, content layers, border | every slider tick |
 
-Masks combine two ways: **REPLACE** overwrites, **ADDING** takes `max()` of the new
-shape and what is already there — so you can paint a face and then lay a linear sky
-gradient on top without losing the brushwork.
+Dragging grain or vignette no longer rebuilds the frame. Dragging exposure does,
+which is unavoidable — but it now runs on a half-resolution copy while the finger
+is moving, and the full frame lands when it stops.
 
-At render time the blend is per-pixel:
-
-```kotlin
-out = base + (effect − base) × intensity × mask
-```
-
-Where the mask is zero the original pixel passes through untouched. Measured on a
-real export: **9.45× more texture in the painted band** than outside it.
-
-Masks persist as a 192×144 PNG beside the photo — about 30 KB per project.
+Both passes are driven by a **conflated channel** rather than the effect's own
+lifecycle. A `LaunchedEffect` restarted on every value change cancels the render
+in flight, which is exactly why an earlier build only updated the preview when
+you released the slider.
 
 ---
 
-## Text & stickers
+## Performance notes
 
-Captions and stickers are layers drawn after the frame, positioned in **normalised
-coordinates** so a look survives any export resolution.
+Things that were wrong and are now not:
 
-- Drag them **directly on the photo** — a white ring marks each layer while you are
-  in the Text or Sticker tab.
-- **Import your own fonts** (`.ttf`, `.otf`, `.ttc`). Each file is validated with
-  `Typeface.createFromFile` before it is accepted, so a corrupt font gives
-  *"Unsupported font file"* instead of a dead entry that crashes later.
-- Controls per layer: size, tracking, rotation, X/Y, bold, shadow, and three
-  quick colours.
+- **Sharpening held four full-frame buffers.** On a 3000 px export that is ~280 MB
+  and it killed the process. Detail is capped at 2 MP and the buffers are released
+  between passes.
+- **The detail stage discarded its own result.** It built a new bitmap, then
+  recycled the old one while the pipeline still held a reference, so the next
+  stage called `getPixels()` on a dead bitmap:
+  `IllegalStateException: Can't call getPixels() on a recycled bitmap`. One missing
+  assignment.
+- **Grain multiplied the frame toward black.** Blending a mid-grey tile with
+  `PorterDuff.MULTIPLY` multiplies against the tile's own alpha. It is a CPU pass
+  now.
+- **Spots and layers were not in the render keys**, so changing either updated the
+  state and never redrew. The preview looked frozen.
 
-32 sticker glyphs ship built-in — `✕ ◯ ◇ ★ ✦ ▲ ❖ ◆ → ⟵ ↗ ⇄ † § ¶ ※ ▣ ❤ ❉ ❋ ✱ ✲ № ™ © ®`
-— all plain Unicode, so they render identically on every device without an emoji font.
-
----
-
-## Batch
-
-Select up to 30 photos, pick a saved project as the look, and export. Photos are
-processed one at a time on `Dispatchers.Default`, recycling each bitmap as it goes,
-so a large selection cannot exhaust memory. A failure on one photo is counted and
-skipped rather than aborting the run.
-
-Optional caption with placeholders resolved per frame:
-
-| Placeholder | Becomes |
-|---|---|
-| `{n}` | index within the batch |
-| `{total}` | batch size |
-| `{name}` | file name |
-
-`Day 3 · {n}/{total}` produces `Day 3 · 1/12`, `Day 3 · 2/12`, and so on.
+Each of these was found by running the app on a device, not by reading the code.
 
 ---
 
-## Privacy
+## Build
 
-<div align="center">
-
-**The app has no network code.**
-
-</div>
-
-No analytics. No crash reporting. No account. No upload. The manifest requests
-storage access to read and write photos and nothing else. Your photos never leave
-the device because there is no code that could send them.
-
-Imported photos are copied into the app's private storage on import — not because of
-privacy, but because Android's photo-picker grants are temporary. The original URI
-stops working the moment the app restarts, which used to crash saved projects with
-`SecurityException`, and copying is the fix.
-
----
-
-## Install
-
-**Requirements:** Android 8.0 (API 26) or newer, arm64-v8a.
-
-Download the latest APK from [Releases](https://github.com/jaivedpereira/flow/releases) and
-install it, or use adb:
-
-```bash
-adb install -r Flow-v1.apk
-```
-
-The APK is signed with a self-signed V2 certificate (`CN=Zyon`). Android will warn
-about an unknown developer — that is expected for sideloaded builds.
-
----
-
-## Build from source
+Requires JDK 21 and the Android SDK with `compileSdk 37`.
 
 ```bash
 git clone https://github.com/jaivedpereira/flow.git
@@ -415,202 +337,78 @@ cd flow
 ./gradlew :app:assembleRelease
 ```
 
-You need **JDK 21** and the **Android SDK with platform 37** and **build-tools 37.0.0**.
+The APK lands in `app/build/outputs/apk/release/`.
 
-<details>
-<summary><b>Two build gotchas worth knowing</b></summary>
+**No API keys, no `google-services.json`, no `.env`.** Nothing is configured per
+machine, which is why the repo builds from a clean clone.
 
-<br>
+### Regenerating the LUTs
 
-**1. `org.jetbrains.kotlin.android` must not be applied.** AGP 9.0+ has Kotlin
-built in; adding the plugin fails with
-*"The 'org.jetbrains.kotlin.android' plugin is no longer required"*.
-
-**2. `noCompress += "bin"` is mandatory.** Without it, `CompressReleaseAssets`
-tries to deflate the 7.57 MB `luts.bin` and the build appears to hang for
-ten-plus minutes. The file is already compact; compressing it again gains nothing
-and costs a lot of build time.
-
-```kotlin
-android {
-    androidResources {
-        noCompress += "bin"
-    }
-}
+```bash
+python tools/extract_luts.py    # source cubes → assets/luts.bin
+python tools/pack_luts.py
+python tools/make_icon.py       # launcher icon
+python tools/make_readme_assets.py
 ```
 
-</details>
+### Validators
+
+Each pipeline stage has a validator that compares the Kotlin implementation
+against a NumPy reference:
+
+```bash
+python tools/validate_presets.py
+python tools/validate_effects.py
+python tools/validate_curves.py
+python tools/validate_hsl.py
+python tools/validate_masks_cubes.py
+```
 
 ---
 
-## Architecture
+## Privacy
 
-```
-com.zyon.flow
-├── MainActivity.kt        navigation between home / editor / batch
-├── edit/                  the engine — no Compose, no Context in the hot path
-│   ├── Lut.kt             3D cube + trilinear sampling
-│   ├── LutPack.kt         lazy metadata + LRU cube cache
-│   ├── CubeIO.kt          .cube parse / write
-│   ├── Effects.kt         13 artistic effects
-│   ├── Filters.kt         18 colour-matrix presets
-│   ├── Curves.kt          monotone cubic curves + border
-│   ├── Hsl.kt             8-band selective colour
-│   ├── Mask.kt            brush mask + per-pixel blend
-│   ├── MaskShapes.kt      linear / radial gradient masks
-│   ├── Overlays.kt        text + sticker compositing
-│   ├── ImageOps.kt        the 12-stage render pipeline
-│   ├── Projects.kt        project + mask persistence (JSON + PNG)
-│   ├── PhotoStore.kt      photo copy-on-import
-│   ├── FontStore.kt       user font library
-│   ├── CurveLibrary.kt    saved curve sets
-│   ├── BatchRunner.kt     batch export
-│   └── Transform.kt       EditState — the single source of truth
-└── ui/                    Compose, thin by design
-    ├── HomeScreen.kt      projects grid
-    ├── EditorScreen.kt    canvas + 12 mode panels + gestures
-    ├── BatchScreen.kt     3-step batch flow
-    ├── Panels.kt          histogram, crop, recipes
-    ├── AdvancedPanels.kt  curves editor, border, mask controls
-    ├── HslPanel.kt        8-band colour
-    ├── EffectsPanel.kt    effect carousel
-    └── OverlayPanels.kt   text + sticker editors
-```
+The app does not request the `INTERNET` permission. That is a hard boundary, not a
+policy: there is no code path that could send anything anywhere, because the
+permission is not in the manifest.
 
-**`EditState` is the contract.** Every panel mutates it, one `LaunchedEffect` renders
-it, and `ImageOps.render` is a pure function from `(src, state, lut, mask)` to a
-bitmap. That purity is what makes the split render, the batch runner, and the
-before/after compare all trivially correct — they call the same function with
-different arguments.
-
-**About 7 830 lines of Kotlin**, of which roughly 2 200 are engine and the rest is UI.
-
-<details>
-<summary><b>A memory bug worth documenting</b></summary>
-
-<br>
-
-The render pipeline hands bitmaps between stages by reference when a stage is a
-no-op. The first version recycled the source unconditionally:
-
-```kotlin
-work.recycle()   // 💥 when work === src, this kills the caller's bitmap
-```
-
-Which produced `Can't call getPixels() on a recycled bitmap` the moment you dragged
-a slider back to zero. Every recycle site is now guarded:
-
-```kotlin
-if (work !== src) work.recycle()
-```
-
-</details>
+Imported photos are copied into the app's private storage. The original in your
+gallery is never modified. Deleting a project deletes the copy, not the original.
 
 ---
 
-## Code map
+## Tech
 
-If you want to change one thing, this is where to look:
-
-| I want to… | Edit this |
+| | |
 |---|---|
-| add an effect | `edit/Effects.kt` — add one entry to `Effects.All` |
-| add a colour preset | `edit/Filters.kt` |
-| add a curve preset | `edit/CurveLibrary.kt` — `BuiltIn` |
-| change the render order | `edit/ImageOps.kt` — `render()` |
-| add a mask shape | `edit/MaskShapes.kt` + `MaskShapeRow` |
-| change the editor layout | `ui/EditorScreen.kt` — the `when (mode)` block |
-| add a mode tab | `ui/EditorScreen.kt` — `ModeBar` + the `when` branch |
-| change persistence | `edit/Projects.kt` — `Project` + `ProjectStore` |
+| Language | Kotlin 2.4 |
+| UI | Jetpack Compose, Material 3 |
+| Build | Gradle 9.7, AGP 9.4 |
+| minSdk · targetSdk | 26 · 36 |
+| Source | 48 Kotlin files, ~13,100 lines |
+| Dependencies | Compose, KotlinX Coroutines, `org.json` |
 
----
-
-## How the LUTs were made
-
-<details>
-<summary><b>Read this before assuming anything about the cubes</b></summary>
-
-<br>
-
-The 269 presets are plain numeric LUT tables, extracted for **personal and
-educational use** from `.xray` container files on a device I own. No server was
-contacted and this repository contains no third-party application code — only the
-resulting colour tables.
-
-This is documented openly because hiding it would be worse. If you are a rights
-holder and want the tables removed, open an issue and they will be removed.
-
-The extraction toolchain is in the repo for transparency:
-`tools/extract_luts.py` and `tools/pack_luts.py`. Neither is needed to build or
-run the app.
-
-If you would rather not ship third-party LUTs, delete `app/src/main/assets/luts.bin`
-and the app builds fine — you keep every feature and can import your own `.cube`
-files instead.
-
-</details>
-
----
-
-## Roadmap
-
-<table>
-<tr><th align="left">Status</th><th align="left">Item</th></tr>
-<tr><td>✅</td><td>Real 3D LUT engine + 269 cubes</td></tr>
-<tr><td>✅</td><td>Real-time intensity via split render</td></tr>
-<tr><td>✅</td><td>13 GrainRad-style effects</td></tr>
-<tr><td>✅</td><td>13 adjustment sliders</td></tr>
-<tr><td>✅</td><td>Selective HSL — 8 bands</td></tr>
-<tr><td>✅</td><td>Tone curves — 4 channels, monotone cubic</td></tr>
-<tr><td>✅</td><td>Brush + linear + radial masks, additive</td></tr>
-<tr><td>✅</td><td>Text and stickers, draggable, custom fonts</td></tr>
-<tr><td>✅</td><td>Border / frame</td></tr>
-<tr><td>✅</td><td>Batch export with captions</td></tr>
-<tr><td>✅</td><td>`.cube` import and export</td></tr>
-<tr><td>✅</td><td>Full project persistence</td></tr>
-<tr><td>🔜</td><td>Motion blur / animated grain</td></tr>
-<tr><td>🔜</td><td>Stackable recipes (cube + effect + curve as one preset)</td></tr>
-<tr><td>🔜</td><td>Export layers as separate files</td></tr>
-<tr><td>💭</td><td>Video grading with the same pipeline</td></tr>
-</table>
+The render runs on the CPU by choice. It behaves identically on every device and
+does not depend on a driver, a GPU generation, or a vendor's OpenGL quirks — at
+the cost of needing downscaling on very large exports.
 
 ---
 
 ## Contributing
 
-Issues and pull requests are welcome. A few things that will make a PR easy to accept:
+Issues and pull requests are welcome. There is no CLA and no template to fill in.
 
-- **Match the engine's shape.** New processing belongs in `edit/`, as a pure
-  function, not inside a composable.
-- **Guard your recycles.** `if (x !== src) x.recycle()` — this bug has been fixed
-  twice already.
-- **Prove the maths.** Every algorithm in this repo was validated numerically
-  before shipping. [The validation scripts](tools/) are in the repo; add yours.
-- **No network.** This is a hard constraint, not a preference.
-
-```bash
-./gradlew :app:assembleRelease    # build
-adb install -r app/build/outputs/apk/release/app-release.apk
-```
-
----
-
-## License
-
-<div align="center">
-
-**GPL v3** — see [LICENSE](LICENSE)
-
-<sub>Use it, study it, change it, share it. If you ship a modified Flow, share that too.</sub>
-
-</div>
+Before sending a change to the pipeline, run the matching validator — a stage that
+drifts from its NumPy reference silently is the easiest kind of bug to ship.
 
 ---
 
 <div align="center">
-<br>
-<img src="docs/img/banner.png" alt="Flow" width="420">
+<sub>
 
-<sub>Built because the good editor shouldn't cost a monthly fee.</sub>
+**GPL v3** · built by [jaivedpereira](https://github.com/jaivedpereira)
 
+No account. No cloud. No subscription.
+
+</sub>
 </div>

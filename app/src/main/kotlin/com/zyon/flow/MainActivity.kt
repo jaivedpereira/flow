@@ -20,6 +20,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
 import com.zyon.flow.edit.Prefs
 import com.zyon.flow.edit.Project
+import com.zyon.flow.ui.AboutScreen
 import com.zyon.flow.ui.BatchScreen
 import com.zyon.flow.ui.EditorScreen
 import com.zyon.flow.ui.HomeScreen
@@ -44,6 +45,7 @@ private fun FlowApp() {
         var editingProject by remember { mutableStateOf<Project?>(null) }
         var inEditor by remember { mutableStateOf(false) }
         var inBatch by remember { mutableStateOf(false) }
+    var inAbout by remember { mutableStateOf(false) }
         var homeRefresh by remember { mutableIntStateOf(0) }
 
         BackHandler(enabled = inEditor) {
@@ -58,6 +60,10 @@ private fun FlowApp() {
             homeRefresh++
         }
 
+        BackHandler(enabled = inAbout) {
+            inAbout = false
+        }
+
         if (!onboarded) {
             OnboardingScreen(
                 onDone = {
@@ -65,6 +71,8 @@ private fun FlowApp() {
                     onboarded = true
                 },
             )
+        } else if (inAbout) {
+            AboutScreen(onBack = { inAbout = false })
         } else if (inBatch) {
             BatchScreen(onBack = {
                 inBatch = false
@@ -90,6 +98,7 @@ private fun FlowApp() {
                     inEditor = true
                 },
                 onOpenBatch = { inBatch = true },
+                onOpenAbout = { inAbout = true },
                 onDeleteProject = { project ->
                     com.zyon.flow.edit.ProjectStore.remove(context, project.id)
                     // the imported photo copy is only referenced by this project

@@ -61,9 +61,16 @@ fun MaskShapeRow(
     shape: MaskShape,
     geometry: MaskGeometry,
     additive: Boolean,
+    rangeMin: Float,
+    rangeMax: Float,
+    rangeHue: Float,
+    rangeTolerance: Float,
     onShape: (MaskShape) -> Unit,
     onGeometry: (MaskGeometry) -> Unit,
     onAdditive: (Boolean) -> Unit,
+    onRange: (Float, Float) -> Unit,
+    onHue: (Float) -> Unit,
+    onTolerance: (Float) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Column(modifier = modifier.fillMaxWidth()) {
@@ -104,7 +111,15 @@ fun MaskShapeRow(
             }
         }
 
-        if (shape != MaskShape.BRUSH) {
+        if (shape == MaskShape.LUMA) {
+            SliderRow("MIN LUMA", rangeMin, 0f..1f) { onRange(it, rangeMax) }
+            SliderRow("MAX LUMA", rangeMax, 0f..1f) { onRange(rangeMin, it) }
+        }
+        if (shape == MaskShape.COLOUR) {
+            SliderRow("HUE", rangeHue / 360f, 0f..1f) { onHue(it * 360f) }
+            SliderRow("RANGE", rangeTolerance / 180f, 0.02f..1f) { onTolerance(it * 180f) }
+        }
+        if (shape != MaskShape.BRUSH && shape != MaskShape.LUMA && shape != MaskShape.COLOUR) {
             SliderRow("FEATHER", geometry.feather, 0f..1f) {
                 onGeometry(geometry.copy(feather = it))
             }

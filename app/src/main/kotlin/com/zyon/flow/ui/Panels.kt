@@ -32,6 +32,10 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.res.stringResource
+import android.graphics.Bitmap
+import com.zyon.flow.edit.ImageOps
+import com.zyon.flow.ui.theme.glassControl
+import com.zyon.flow.ui.theme.GlassTint
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
@@ -51,10 +55,34 @@ import com.zyon.flow.ui.theme.FlowLine
 import com.zyon.flow.ui.theme.FlowText
 import com.zyon.flow.ui.theme.FlowTextDim
 
+/** Small text action used in panel headers. */
+@Composable
+private fun MiniAction(label: String, enabled: Boolean, onClick: () -> Unit) {
+    Box(
+        modifier = Modifier
+            .glassControl(
+                shape = RoundedCornerShape(8.dp),
+                tint = if (enabled) GlassTint.CONTROL else GlassTint.PANEL,
+            )
+            .clickable(enabled = enabled, onClick = onClick)
+            .padding(horizontal = 8.dp, vertical = 5.dp),
+    ) {
+        Text(
+            text = label,
+            color = if (enabled) FlowText else FlowTextDim.copy(alpha = 0.5f),
+            style = MaterialTheme.typography.labelSmall,
+            fontSize = 8.sp,
+            letterSpacing = 0.4.sp,
+        )
+    }
+}
+
 /** Compact luminance histogram, drawn as a filled curve. */
 @Composable
 fun Histogram(
     bins: IntArray?,
+    /** (shadow fraction, highlight fraction). Null hides the markers. */
+    clipping: Pair<Float, Float>? = null,
     modifier: Modifier = Modifier,
 ) {
     Box(
@@ -85,6 +113,28 @@ fun Histogram(
                     if (i == 0) line.moveTo(x, y) else line.lineTo(x, y)
                 }
                 drawPath(line, FlowCream.copy(alpha = 0.85f), style = Stroke(width = 1.6f))
+
+                // Clipping markers: a red bar on the right when highlights are
+                // blown, a blue bar on the left when shadows are crushed. Width
+                // scales with how much of the frame is affected, so it is a
+                // readout rather than a yes/no light.
+                if (clipping != null) {
+                    val (dark, bright) = clipping
+                    if (dark > 0.001f) {
+                        drawRect(
+                            color = androidx.compose.ui.graphics.Color(0xFF4A7BD0),
+                            topLeft = androidx.compose.ui.geometry.Offset(0f, 0f),
+                            size = androidx.compose.ui.geometry.Size(size.width * dark.coerceIn(0f, 1f), 3.5f),
+                        )
+                    }
+                    if (bright > 0.001f) {
+                        drawRect(
+                            color = androidx.compose.ui.graphics.Color(0xFFE04B4B),
+                            topLeft = androidx.compose.ui.geometry.Offset(size.width * (1f - bright.coerceIn(0f, 1f)), 0f),
+                            size = androidx.compose.ui.geometry.Size(size.width * bright.coerceIn(0f, 1f), 3.5f),
+                        )
+                    }
+                }
             }
         } else {
             Text(
@@ -201,6 +251,52 @@ fun CropPanel(
                 modifier = Modifier.width(38.dp),
             )
         }
+
+        // Keystone correction. Two axes is enough for the common cases: a
+        // building shot from below, and a frame taken off-axis.
+        PerspRow(
+            label = stringResource(R.string.crop_persp_v),
+            value = transform.perspectiveV,
+        ) { onChange(transform.copy(perspectiveV = it)) }
+        PerspRow(
+            label = stringResource(R.string.crop_persp_h),
+            value = transform.perspectiveH,
+        ) { onChange(transform.copy(perspectiveH = it)) }
+    }
+}
+
+@Composable
+private fun PerspRow(label: String, value: Float, onChange: (Float) -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 20.dp, vertical = 2.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelSmall,
+            color = FlowTextDim,
+            modifier = Modifier.width(96.dp),
+        )
+        androidx.compose.material3.Slider(
+            value = value,
+            onValueChange = onChange,
+            valueRange = -1f..1f,
+            colors = androidx.compose.material3.SliderDefaults.colors(
+                thumbColor = FlowCream,
+                activeTrackColor = FlowCream.copy(alpha = 0.7f),
+                inactiveTrackColor = FlowLine,
+            ),
+            modifier = Modifier.weight(1f),
+        )
+        Text(
+            text = (value * 100).toInt().toString(),
+            style = MaterialTheme.typography.labelSmall,
+            color = FlowTextDim,
+            textAlign = TextAlign.End,
+            modifier = Modifier.width(38.dp),
+        )
     }
 }
 
@@ -227,10 +323,13 @@ private fun ActionChip(label: String, onClick: () -> Unit) {
 @Composable
 fun RecipePanel(
     recipes: List<Recipe>,
+    clipboardHasContent: Boolean,
     modifier: Modifier = Modifier,
     onApply: (Recipe) -> Unit,
     onSave: () -> Unit,
     onDelete: (Recipe) -> Unit,
+    onCopyLook: () -> Unit,
+    onPasteLook: () -> Unit,
 ) {
     Column(
         modifier = modifier
@@ -252,6 +351,10 @@ fun RecipePanel(
                 letterSpacing = 2.sp,
                 modifier = Modifier.weight(1f),
             )
+            MiniAction(stringResource(R.string.look_copy), true, onCopyLook)
+            Spacer(Modifier.width(6.dp))
+            MiniAction(stringResource(R.string.look_paste), clipboardHasContent, onPasteLook)
+            Spacer(Modifier.width(8.dp))
             Box(
                 modifier = Modifier
                     .clip(RoundedCornerShape(10.dp))
@@ -327,6 +430,27 @@ fun RecipePanel(
 }
 
 /** Build 256-bin luminance histogram from packed ARGB pixels. */
+
+/** Fraction of pixels crushed to black or blown to white, 0..1 each. */
+fun clippingOf(src: Bitmap, maxDim: Int = 200): Pair<Float, Float> {
+    val small = ImageOps.sampleForHistogram(src, maxDim)
+    val w = small.width
+    val h = small.height
+    val px = IntArray(w * h)
+    small.getPixels(px, 0, w, 0, 0, w, h)
+    var dark = 0
+    var bright = 0
+    for (p in px) {
+        val r = (p shr 16) and 0xFF
+        val g = (p shr 8) and 0xFF
+        val b = p and 0xFF
+        if (r <= 3 && g <= 3 && b <= 3) dark++
+        if (r >= 252 && g >= 252 && b >= 252) bright++
+    }
+    val n = px.size.toFloat().coerceAtLeast(1f)
+    return (dark / n) to (bright / n)
+}
+
 fun histogramOf(pixels: IntArray): IntArray {
     val bins = IntArray(256)
     for (p in pixels) {

@@ -18,6 +18,10 @@ enum class MaskShape(val label: String) {
     BRUSH("Brush"),
     LINEAR("Linear"),
     RADIAL("Radial"),
+    /** Selects pixels by how bright they are. */
+    LUMA("Luma"),
+    /** Selects pixels by how close their hue is to a target. */
+    COLOUR("Colour"),
 }
 
 /** Normalised 0..1 control points inside the image. */
@@ -91,6 +95,94 @@ object MaskShapes {
                 if (g.invert) v = 1f - v
                 val i = y * mask.width + x
                 mask.values[i] = if (additive) maxOf(mask.values[i], v) else v
+            }
+        }
+        mask.setHasContent(true)
+    }
+
+    /**
+     * Fill the mask from a luminance band. [minV] and [maxV] are 0..1 brightness;
+     * [feather] softens both edges so the selection does not band.
+     */
+    fun fillLumaRange(
+        mask: MaskData,
+        src: android.graphics.Bitmap,
+        minV: Float,
+        maxV: Float,
+        feather: Float = 0.12f,
+    ) {
+        val w = src.width
+        val h = src.height
+        val px = IntArray(w * h)
+        src.getPixels(px, 0, w, 0, 0, w, h)
+
+        val lo = minOf(minV, maxV)
+        val hi = maxOf(minV, maxV)
+        val f = feather.coerceIn(0.01f, 0.5f)
+
+        for (y in 0 until mask.height) {
+            val sy = (y.toFloat() / mask.height * h).toInt().coerceIn(0, h - 1)
+            for (x in 0 until mask.width) {
+                val sx = (x.toFloat() / mask.width * w).toInt().coerceIn(0, w - 1)
+                val p = px[sy * w + sx]
+                val r = ((p shr 16) and 0xFF) / 255f
+                val g = ((p shr 8) and 0xFF) / 255f
+                val b = (p and 0xFF) / 255f
+                val luma = r * 0.299f + g * 0.587f + b * 0.114f
+
+                var v = 1f
+                if (luma < lo) v = ((luma - (lo - f)) / f).coerceIn(0f, 1f)
+                else if (luma > hi) v = 1f - ((luma - hi) / f).coerceIn(0f, 1f)
+                mask.values[y * mask.width + x] = v
+            }
+        }
+        mask.setHasContent(true)
+    }
+
+    /**
+     * Fill the mask from a hue band. [targetDeg] is the centre, [tolerance] the
+     * half-width in degrees, [satFloor] ignores near-grey pixels.
+     */
+    fun fillColourRange(
+        mask: MaskData,
+        src: android.graphics.Bitmap,
+        targetDeg: Float,
+        tolerance: Float = 30f,
+        satFloor: Float = 0.12f,
+    ) {
+        val w = src.width
+        val h = src.height
+        val px = IntArray(w * h)
+        src.getPixels(px, 0, w, 0, 0, w, h)
+
+        val tol = tolerance.coerceIn(2f, 180f)
+        for (y in 0 until mask.height) {
+            val sy = (y.toFloat() / mask.height * h).toInt().coerceIn(0, h - 1)
+            for (x in 0 until mask.width) {
+                val sx = (x.toFloat() / mask.width * w).toInt().coerceIn(0, w - 1)
+                val p = px[sy * w + sx]
+                val r = ((p shr 16) and 0xFF) / 255f
+                val g = ((p shr 8) and 0xFF) / 255f
+                val b = (p and 0xFF) / 255f
+
+                val mx = maxOf(r, maxOf(g, b))
+                val mn = minOf(r, minOf(g, b))
+                val delta = mx - mn
+                if (mx <= 0.001f || delta / mx < satFloor) {
+                    mask.values[y * mask.width + x] = 0f
+                    continue
+                }
+                var hue = when {
+                    mx == r -> 60f * (((g - b) / delta) % 6f)
+                    mx == g -> 60f * (((b - r) / delta) + 2f)
+                    else -> 60f * (((r - g) / delta) + 4f)
+                }
+                if (hue < 0f) hue += 360f
+
+                var d = kotlin.math.abs(hue - targetDeg) % 360f
+                if (d > 180f) d = 360f - d
+                val v = if (d >= tol) 0f else 0.5f * (1f + kotlin.math.cos(Math.PI.toFloat() * d / tol))
+                mask.values[y * mask.width + x] = v
             }
         }
         mask.setHasContent(true)

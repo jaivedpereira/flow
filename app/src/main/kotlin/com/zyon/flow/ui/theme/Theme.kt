@@ -17,14 +17,19 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
 import com.zyon.flow.R
 
-val FlowBlack = Color(0xFF000000)
-val FlowSurface = Color(0xFF0B0B0D)
-val FlowElevated = Color(0xFF141417)
-val FlowLine = Color(0x1FFFFFFF)
+// A four-step ramp instead of black-on-black: each surface is visibly a different
+// plane, so a panel reads as a panel without needing a translucent wash to
+// separate it from the canvas.
+val FlowBlack = Color(0xFF08080A)      // the canvas behind everything
+val FlowSurface = Color(0xFF101014)    // sheets and panels
+val FlowElevated = Color(0xFF191920)   // controls sitting on a sheet
+val FlowRaised = Color(0xFF232331)     // the chosen option in a group
+val FlowLine = Color(0x22FFFFFF)
 val FlowCream = Color(0xFFEDE7DC)
 val FlowText = Color(0xFFFFFFFF)
-val FlowTextDim = Color(0xFF8A8A90)
+val FlowTextDim = Color(0xFF9A9AA6)
 val FlowDanger = Color(0xFFFF5A4E)
+val FlowAccent = Color(0xFF7BB0FF)
 
 private val FlowScheme = darkColorScheme(
     primary = FlowCream,
@@ -36,7 +41,7 @@ private val FlowScheme = darkColorScheme(
     tertiary = Color(0xFF7BB0FF),
     background = FlowBlack,
     onBackground = FlowText,
-    surface = FlowBlack,
+    surface = FlowSurface,
     onSurface = FlowText,
     surfaceVariant = FlowElevated,
     onSurfaceVariant = FlowTextDim,

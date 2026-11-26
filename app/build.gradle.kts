@@ -11,8 +11,8 @@ android {
         applicationId = "com.zyon.flow"
         minSdk = 26
         targetSdk = 36
-        versionCode = 8
-        versionName = "1.5"
+        versionCode = 18
+        versionName = "1.6"
         vectorDrawables { useSupportLibrary = true }
     }
 

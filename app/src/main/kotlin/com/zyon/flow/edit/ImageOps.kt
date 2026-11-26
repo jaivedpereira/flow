@@ -74,8 +74,10 @@ object ImageOps {
         mask: MaskData? = null,
         customTypeface: ((String?, Boolean) -> android.graphics.Typeface?)? = null,
         withFinish: Boolean = true,
+        /** Resolves a cube key for layer CUBE entries. */
+        lutResolver: ((String) -> Lut?)? = null,
     ): Bitmap = try {
-        renderInternal(src, state, lut, mask, customTypeface, withFinish)
+        renderInternal(src, state, lut, mask, customTypeface, withFinish, lutResolver)
     } catch (oom: OutOfMemoryError) {
         val half = Bitmap.createScaledBitmap(
             src,
@@ -84,7 +86,7 @@ object ImageOps {
             true,
         )
         try {
-            val small = renderInternal(half, state, lut, mask, customTypeface, withFinish)
+            val small = renderInternal(half, state, lut, mask, customTypeface, withFinish, lutResolver)
             val up = Bitmap.createScaledBitmap(small, src.width, src.height, true)
             if (small !== up) small.recycle()
             up
@@ -102,11 +104,22 @@ object ImageOps {
         mask: MaskData? = null,
         customTypeface: ((String?, Boolean) -> android.graphics.Typeface?)? = null,
         withFinish: Boolean = true,
+        lutResolver: ((String) -> Lut?)? = null,
     ): Bitmap {
         val preset = state.preset
         val adj = state.adjustments
 
         var work = Geometry.apply(src, state.transform)
+
+        // Spot removal runs on the corrected frame, before any look is applied, so
+        // the patches get graded along with the rest of the photo.
+        if (state.spots.isNotEmpty()) {
+            val healed = SpotRemoval.apply(work, state.spots)
+            if (healed !== work) {
+                if (work !== src) work.recycle()
+                work = healed
+            }
+        }
 
         // Cube first: it is the base look, manual sliders refine on top of it.
         // Never recycle `src` here: with no geometry change `work === src` and the
@@ -129,7 +142,7 @@ object ImageOps {
         work = coloured
 
         // Luminance-dependent tone controls + artistic effect.
-        val toned = applyTone(work, adj.highlights, adj.shadows, adj.vibrance, adj.hueShift)
+        val toned = applyTone(work, adj.highlights, adj.shadows, adj.vibrance, adj.hueShift, adj.whites, adj.blacks, adj.dehaze)
         if (toned !== work) {
             if (work !== src) work.recycle()
             work = toned
@@ -170,10 +183,70 @@ object ImageOps {
             if (full !== work && full !== applied) full.recycle()
         }
 
-        val detail = applyDetail(work, adj.sharpen, adj.clarity)
+        // Noise reduction sits immediately before sharpening: cleaning first is
+        // the only order that makes sense, since sharpening amplifies whatever
+        // noise is still there.
+        if (adj.denoiseColour > 0.005f) {
+            val cleaned = denoiseColour(work, adj.denoiseColour)
+            if (cleaned !== work) {
+                if (work !== src) work.recycle()
+                work = cleaned
+            }
+        }
+        if (adj.denoiseLuma > 0.005f) {
+            val cleaned = denoiseLuma(work, adj.denoiseLuma)
+            if (cleaned !== work) {
+                if (work !== src) work.recycle()
+                work = cleaned
+            }
+        }
+
+        val detail = applyDetail(work, adj.sharpen, adj.texture, adj.clarity, adj.sharpenMask)
         if (detail !== work) {
             if (work !== src) work.recycle()
             work = detail
+        }
+
+        // ---- user layers, bottom of the stack first.
+        // Everything above happened to the base photo. Layers composite on top in
+        // order, so a caption below an effect layer gets graded with the image and
+        // a caption above it stays clean.
+        if (state.layers.isNotEmpty()) {
+            for (layer in state.layers) {
+                if (!layer.content.isAdjustment) continue
+                val isBase = work === src
+                work = when {
+                    !layer.isRenderable -> work
+
+                    layer.content == LayerContent.CUBE -> {
+                        val cube = layer.lutKey?.let { key ->
+                            lutResolver?.invoke(key)
+                        }
+                        if (cube == null) work else run {
+                            val cubed = Lut.apply(work, cube, layer.strength)
+                            if (!isBase && cubed !== work) work.recycle()
+                            cubed
+                        }
+                    }
+
+                    layer.content == LayerContent.COLOUR -> run {
+                        val graded = applyColourLayer(work, layer.adjustments, layer.opacity)
+                        if (!isBase && graded !== work) work.recycle()
+                        graded
+                    }
+
+                    layer.content == LayerContent.EFFECT -> run {
+                        val effect = Effects.byId(layer.effectId)
+                        val full = effect.apply(work, 1f, layer.effectParam)
+                        val applied = blendWithMask(work, full, null, layer.strength)
+                        if (full !== applied && full !== work) full.recycle()
+                        if (!isBase && applied !== work) work.recycle()
+                        applied
+                    }
+
+                    else -> work
+                }
+            }
         }
 
         if (!withFinish) return work
@@ -210,11 +283,30 @@ object ImageOps {
             }
         }
 
-        if (!state.overlays.isEmpty) {
-            val composed = state.overlays.apply(work, customTypeface)
-            if (composed !== work) {
-                if (work !== src) work.recycle()
-                work = composed
+        // Content layers and the base overlays, in stack order. Kept out of the
+        // expensive pass on purpose: dragging a caption must not rebuild the look.
+        if (!state.overlays.isEmpty || state.layers.any { !it.content.isAdjustment && it.isRenderable }) {
+            val texts = ArrayList<TextLayer>()
+            val stickers = ArrayList<StickerLayer>()
+            if (!state.overlays.isEmpty) {
+                texts.addAll(state.overlays.texts)
+                stickers.addAll(state.overlays.stickers)
+            }
+            for (layer in state.layers) {
+                if (layer.content.isAdjustment || !layer.isRenderable) continue
+                when (layer.content) {
+                    LayerContent.TEXT -> layer.text?.let { texts.add(it) }
+                    LayerContent.STICKER -> layer.sticker?.let { stickers.add(it) }
+                    else -> {}
+                }
+            }
+            val stacked = Overlays(texts = texts, stickers = stickers)
+            if (!stacked.isEmpty) {
+                val composed = stacked.apply(work, customTypeface)
+                if (composed !== work) {
+                    if (work !== src) work.recycle()
+                    work = composed
+                }
             }
         }
 
@@ -274,11 +366,29 @@ object ImageOps {
             work = grained
         }
 
-        if (!state.overlays.isEmpty) {
-            val composed = state.overlays.apply(work, customTypeface)
-            if (composed !== work) {
-                if (work !== src) work.recycle()
-                work = composed
+        // Same stack as the full render, so the live frame matches the export.
+        if (!state.overlays.isEmpty || state.layers.any { !it.content.isAdjustment && it.isRenderable }) {
+            val texts = ArrayList<TextLayer>()
+            val stickers = ArrayList<StickerLayer>()
+            if (!state.overlays.isEmpty) {
+                texts.addAll(state.overlays.texts)
+                stickers.addAll(state.overlays.stickers)
+            }
+            for (layer in state.layers) {
+                if (layer.content.isAdjustment || !layer.isRenderable) continue
+                when (layer.content) {
+                    LayerContent.TEXT -> layer.text?.let { texts.add(it) }
+                    LayerContent.STICKER -> layer.sticker?.let { stickers.add(it) }
+                    else -> {}
+                }
+            }
+            val stacked = Overlays(texts = texts, stickers = stickers)
+            if (!stacked.isEmpty) {
+                val composed = stacked.apply(work, customTypeface)
+                if (composed !== work) {
+                    if (work !== src) work.recycle()
+                    work = composed
+                }
             }
         }
 
@@ -298,8 +408,38 @@ object ImageOps {
     /** Above this many pixels, sharpening runs on a downscaled copy. */
     private const val MAX_DETAIL_PIXELS = 2_000_000L
 
-    private fun applyDetail(src: Bitmap, sharpen: Float, clarity: Float): Bitmap {
-        if (sharpen < 0.005f && clarity < 0.005f) return src
+
+    /**
+     * Apply a manual grade as a layer. Runs the matrix and tone stages only, and
+     * cross-fades by [opacity] so a half-strength layer reads as a real blend.
+     */
+    private fun applyColourLayer(src: Bitmap, adj: Adjustments, opacity: Float): Bitmap {
+        if (!adj.hasAnyChange()) return src
+        val matrix = buildMatrix(Preset("layer", "Layer"), adj, 0f, 0f)
+        val graded = Bitmap.createBitmap(src.width, src.height, Bitmap.Config.ARGB_8888)
+        Canvas(graded).drawBitmap(
+            src, 0f, 0f,
+            Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG).apply {
+                colorFilter = ColorMatrixColorFilter(matrix)
+            },
+        )
+        val toned = applyTone(graded, adj.highlights, adj.shadows, adj.vibrance, adj.hueShift, adj.whites, adj.blacks, adj.dehaze)
+        if (toned !== graded) graded.recycle()
+        return if (opacity >= 0.999f) toned else {
+            val mixed = blendWithMask(src, toned, null, opacity)
+            if (mixed !== toned) toned.recycle()
+            mixed
+        }
+    }
+
+    private fun applyDetail(
+        src: Bitmap,
+        sharpen: Float,
+        texture: Float,
+        clarity: Float,
+        sharpenMask: Float = 0f,
+    ): Bitmap {
+        if (sharpen < 0.005f && texture < 0.005f && clarity < 0.005f) return src
         // Unsharp masking needs pixels + result + blur scratch: three full-frame
         // IntArrays. Past ~2 MP that costs more than the effect is worth, so run
         // it on a downscaled copy and scale the result back up.
@@ -312,7 +452,7 @@ object ImageOps {
                 (src.height * scale).toInt().coerceAtLeast(1),
                 true,
             )
-            val blurred = applyDetail(small, sharpen, clarity)
+            val blurred = applyDetail(small, sharpen, texture, clarity, sharpenMask)
             val back = Bitmap.createScaledBitmap(blurred, src.width, src.height, true)
             if (blurred !== small) blurred.recycle()
             if (small !== src) small.recycle()
@@ -331,9 +471,19 @@ object ImageOps {
 
         if (sharpen >= 0.005f) {
             val soft = boxBlur(pixels, w, h, 1)
-            unsharpInto(result, pixels, soft, w * h, sharpen * 1.15f)
+            if (sharpenMask >= 0.005f) {
+                unsharpMaskedInto(result, pixels, soft, w, h, sharpen * 1.15f, sharpenMask)
+            } else {
+                unsharpInto(result, pixels, soft, w * h, sharpen * 1.15f)
+            }
             // soft falls out of scope here and is collected before the next pass,
             // so the peak is two buffers plus the blur scratch, not four.
+        }
+        if (texture >= 0.005f) {
+            // medium radius: enough to lift skin and leaves, not enough to look
+            // like a local-contrast pass
+            val softMid = boxBlur(pixels, w, h, 2)
+            unsharpInto(result, pixels, softMid, w * h, texture * 0.55f)
         }
         if (clarity >= 0.005f) {
             val softWide = boxBlur(pixels, w, h, 3)
@@ -343,6 +493,71 @@ object ImageOps {
         val out = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
         out.setPixels(result, 0, w, 0, 0, w, h)
         return out
+    }
+
+    /**
+     * Unsharp, attenuated where the neighbourhood is flat.
+     *
+     * Smooth areas are exactly where sharpening turns noise into visible grain, so
+     * the gain is scaled by the local range: strong edges keep full amount, quiet
+     * patches get very little.
+     */
+    private fun unsharpMaskedInto(
+        out: IntArray,
+        base: IntArray,
+        soft: IntArray,
+        w: Int,
+        h: Int,
+        amount: Float,
+        maskStrength: Float,
+    ) {
+        val m = maskStrength.coerceIn(0f, 1f)
+        for (y in 0 until h) {
+            for (x in 0 until w) {
+                val i = y * w + x
+                // local contrast from the four neighbours in luma
+                val c = base[i]
+                val l0 = ((c shr 16) and 0xFF) * 0.299f +
+                    ((c shr 8) and 0xFF) * 0.587f + (c and 0xFF) * 0.114f
+                var lo = l0
+                var hi = l0
+                for (k in 0 until 4) {
+                    val xx = when (k) {
+                        0 -> (x - 1).coerceIn(0, w - 1)
+                        1 -> (x + 1).coerceIn(0, w - 1)
+                        else -> x
+                    }
+                    val yy = when (k) {
+                        2 -> (y - 1).coerceIn(0, h - 1)
+                        3 -> (y + 1).coerceIn(0, h - 1)
+                        else -> y
+                    }
+                    val q = base[yy * w + xx]
+                    val lq = ((q shr 16) and 0xFF) * 0.299f +
+                        ((q shr 8) and 0xFF) * 0.587f + (q and 0xFF) * 0.114f
+                    if (lq < lo) lo = lq
+                    if (lq > hi) hi = lq
+                }
+                val range = hi - lo
+                // 0 at a flat patch, 1 once the edge is strong
+                val edge = (range / 26f).coerceIn(0f, 1f)
+                val gate = 1f - m * (1f - edge)
+
+                val b = base[i]
+                val s = soft[i]
+                val a = amount * gate
+                val br = (b shr 16) and 0xFF
+                val bg = (b shr 8) and 0xFF
+                val bb = b and 0xFF
+                val sr = (s shr 16) and 0xFF
+                val sg = (s shr 8) and 0xFF
+                val sb = s and 0xFF
+                val nr = (br + (br - sr) * a).toInt().coerceIn(0, 255)
+                val ng = (bg + (bg - sg) * a).toInt().coerceIn(0, 255)
+                val nb = (bb + (bb - sb) * a).toInt().coerceIn(0, 255)
+                out[i] = (b and 0xFF000000.toInt()) or (nr shl 16) or (ng shl 8) or nb
+            }
+        }
     }
 
     /** out = base + amount * (base - soft), per channel. */
@@ -380,7 +595,14 @@ object ImageOps {
         // Chroma noise is what makes grain read as film rather than as digital
         // banding, so blue gets a slightly larger swing than red.
         val swing = 52f * amt
-        val rnd = java.util.Random(0x60D5EEDL)
+        // Prebuilt noise tile instead of four Random calls per pixel: same look,
+        // roughly a quarter of the cost, which matters because this runs on every
+        // slider tick.
+        val tile = noiseTile(256)
+        val tilePx = IntArray(256 * 256)
+        tile.getPixels(tilePx, 0, 256, 0, 0, 256, 256)
+        var t = 0
+        val modulus = tilePx.size
 
         for (i in px.indices) {
             val p = px[i]
@@ -388,14 +610,17 @@ object ImageOps {
             val g = (p shr 8) and 0xFF
             val b = p and 0xFF
 
-            // one shared luma offset plus a small per-channel delta
-            val luma = ((rnd.nextFloat() - 0.5f) * 2f * swing).toInt()
-            val dr = ((rnd.nextFloat() - 0.5f) * swing * 0.35f).toInt()
-            val dg = ((rnd.nextFloat() - 0.5f) * swing * 0.35f).toInt()
-            val db = ((rnd.nextFloat() - 0.5f) * swing * 0.45f).toInt()
+            val n = tilePx[t]
+            if (t >= modulus - 1) t = 0 else t++
+            val base = (n and 0xFF) - 128            // -128..+127
+            val other = ((n shr 8) and 0xFF) - 128
+
+            val luma = (base * swing / 128f).toInt()
+            val dr = (other * swing * 0.35f / 128f).toInt()
+            val db = (-other * swing * 0.45f / 128f).toInt()
 
             val nr = (r + luma + dr).coerceIn(0, 255)
-            val ng = (g + luma + dg).coerceIn(0, 255)
+            val ng = (g + luma).coerceIn(0, 255)
             val nb = (b + luma + db).coerceIn(0, 255)
             px[i] = (p and 0xFF000000.toInt()) or (nr shl 16) or (ng shl 8) or nb
         }
@@ -480,17 +705,25 @@ object ImageOps {
 
     // ---- export ----------------------------------------------------------
 
-    suspend fun export(context: Context, bitmap: Bitmap): Boolean =
-        exportUri(context, bitmap) != null
+    suspend fun export(
+        context: Context,
+        bitmap: Bitmap,
+        settings: ExportSettings = ExportSettings(),
+    ): Boolean = exportUri(context, bitmap, settings) != null
 
     /** Same as [export] but returns the saved uri, for share intents. */
-    suspend fun exportUri(context: Context, bitmap: Bitmap): Uri? = withContext(Dispatchers.IO) {
-        val name = "Flow_${System.currentTimeMillis()}.jpg"
+    suspend fun exportUri(
+        context: Context,
+        bitmap: Bitmap,
+        settings: ExportSettings = ExportSettings(),
+    ): Uri? = withContext(Dispatchers.IO) {
+        val fitted = settings.fit(bitmap)
+        val name = "Flow_${System.currentTimeMillis()}.${settings.format.ext}"
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                 val values = ContentValues().apply {
                     put(MediaStore.Images.Media.DISPLAY_NAME, name)
-                    put(MediaStore.Images.Media.MIME_TYPE, "image/jpeg")
+                    put(MediaStore.Images.Media.MIME_TYPE, settings.format.mime)
                     put(MediaStore.Images.Media.RELATIVE_PATH, "${Environment.DIRECTORY_PICTURES}/Flow")
                     put(MediaStore.Images.Media.IS_PENDING, 1)
                 }
@@ -498,8 +731,9 @@ object ImageOps {
                 val uri = resolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values)
                     ?: return@withContext null
                 resolver.openOutputStream(uri)?.use { stream ->
-                    bitmap.compress(Bitmap.CompressFormat.JPEG, 95, stream)
+                    fitted.compress(settings.format.compressFormat, settings.quality, stream)
                 } ?: return@withContext null
+                if (fitted !== bitmap) fitted.recycle()
                 values.clear()
                 values.put(MediaStore.Images.Media.IS_PENDING, 0)
                 resolver.update(uri, values, null, null)
@@ -513,8 +747,9 @@ object ImageOps {
                 if (!dir.exists()) dir.mkdirs()
                 val file = File(dir, name)
                 FileOutputStream(file).use { stream ->
-                    bitmap.compress(Bitmap.CompressFormat.JPEG, 95, stream)
+                    fitted.compress(settings.format.compressFormat, settings.quality, stream)
                 }
+                if (fitted !== bitmap) fitted.recycle()
                 @Suppress("DEPRECATION")
                 Uri.fromFile(file)
             }
@@ -566,24 +801,229 @@ object ImageOps {
      * Highlights / shadows / vibrance / hue shift.
      * These need per-pixel luminance so they cannot be folded into a matrix.
      */
+
+    /**
+     * Dark channel prior dehaze.
+     *
+     * Haze puts a near-constant veil between the camera and the subject. In a
+     * clean photo almost every patch has at least one very dark channel; in a
+     * hazy one the minimum channel is lifted. Measuring that lift gives the veil
+     * and where it is thickest, which is then subtracted out.
+     *
+     * I = J * t + A * (1 - t)   ->   J = (I - A) / t + A
+     */
+    private fun dehaze(src: Bitmap, amount: Float): Bitmap {
+        val w = src.width
+        val h = src.height
+        val px = IntArray(w * h)
+        src.getPixels(px, 0, w, 0, 0, w, h)
+
+        val dark = FloatArray(w * h)
+        var sum = 0f
+        for (i in px.indices) {
+            val p = px[i]
+            val r = ((p shr 16) and 0xFF) / 255f
+            val g = ((p shr 8) and 0xFF) / 255f
+            val b = (p and 0xFF) / 255f
+            val m = minOf(r, minOf(g, b))
+            dark[i] = m
+            sum += m
+        }
+        val meanDark = sum / px.size.coerceAtLeast(1)
+
+        // atmospheric light: the brightest pixels in the dark channel
+        val sorted = dark.copyOf()
+        sorted.sort()
+        val atm = sorted[(sorted.size * 0.999f).toInt().coerceIn(0, sorted.size - 1)]
+            .coerceIn(0.35f, 1f)
+
+        // omega controls how much veil is removed; keep it below 1 so some depth
+        // survives instead of the image going flat and grey
+        val omega = 0.72f * amount.coerceIn(-1f, 1f)
+        val out = IntArray(w * h)
+
+        for (i in px.indices) {
+            val p = px[i]
+            val r = ((p shr 16) and 0xFF) / 255f
+            val g = ((p shr 8) and 0xFF) / 255f
+            val b = (p and 0xFF) / 255f
+
+            // transmission, floored so a very veiled patch cannot explode
+            val t = (1f - omega * (dark[i] / atm)).coerceIn(0.22f, 1f)
+
+            var nr = (r - atm) / t + atm
+            var ng = (g - atm) / t + atm
+            var nb = (b - atm) / t + atm
+
+            // negative dehaze adds haze instead
+            if (amount < 0f) {
+                val k = (-amount).coerceIn(0f, 1f) * meanDark * 1.4f
+                nr = nr * (1f - k) + atm * k
+                ng = ng * (1f - k) + atm * k
+                nb = nb * (1f - k) + atm * k
+            }
+
+            out[i] = (p and 0xFF000000.toInt()) or
+                ((nr.coerceIn(0f, 1f) * 255f).toInt() shl 16) or
+                ((ng.coerceIn(0f, 1f) * 255f).toInt() shl 8) or
+                ((nb.coerceIn(0f, 1f) * 255f).toInt())
+        }
+
+        sorted.let { }
+        val bmp = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+        bmp.setPixels(out, 0, w, 0, 0, w, h)
+        return bmp
+    }
+
+    /**
+     * Colour noise reduction. A 3x3 median on the chroma difference only: luma is
+     * rebuilt from the original so edge detail is untouched, which is the whole
+     * point of doing it per channel instead of blurring the image.
+     */
+    private fun denoiseColour(src: Bitmap, strength: Float): Bitmap {
+        if (strength < 0.005f) return src
+        val w = src.width
+        val h = src.height
+        val px = IntArray(w * h)
+        src.getPixels(px, 0, w, 0, 0, w, h)
+        val out = IntArray(w * h)
+
+        val k = strength.coerceIn(0f, 1f)
+        val rs = IntArray(9)
+        val bs = IntArray(9)
+
+        for (y in 0 until h) {
+            for (x in 0 until w) {
+                val i = y * w + x
+                val p = px[i]
+                var n = 0
+                for (dy in -1..1) {
+                    val yy = (y + dy).coerceIn(0, h - 1)
+                    for (dx in -1..1) {
+                        val xx = (x + dx).coerceIn(0, w - 1)
+                        val q = px[yy * w + xx]
+                        rs[n] = (q shr 16) and 0xFF
+                        bs[n] = q and 0xFF
+                        n++
+                    }
+                }
+                java.util.Arrays.sort(rs, 0, n)
+                java.util.Arrays.sort(bs, 0, n)
+                val mr = rs[n / 2]
+                val mb = bs[n / 2]
+
+                val r0 = (p shr 16) and 0xFF
+                val g0 = (p shr 8) and 0xFF
+                val b0 = p and 0xFF
+                // move toward the median but keep the original luma exactly
+                val l0 = (r0 * 0.299f + g0 * 0.587f + b0 * 0.114f)
+                var nr = r0 + (mr - r0) * k
+                var nb = b0 + (mb - b0) * k
+                var ng = g0 + ((mr + mb) / 2f - (r0 + b0) / 2f) * k
+                val l1 = nr * 0.299f + ng * 0.587f + nb * 0.114f
+                val fix = l0 - l1
+                nr += fix
+                ng += fix
+                nb += fix
+
+                out[i] = (p and 0xFF000000.toInt()) or
+                    (nr.toInt().coerceIn(0, 255) shl 16) or
+                    (ng.toInt().coerceIn(0, 255) shl 8) or
+                    (nb.toInt().coerceIn(0, 255))
+            }
+        }
+
+        val bmp = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+        bmp.setPixels(out, 0, w, 0, 0, w, h)
+        return bmp
+    }
+
+    /** Luminance noise reduction: a gentle 3x3 average weighted by similarity. */
+    private fun denoiseLuma(src: Bitmap, strength: Float): Bitmap {
+        if (strength < 0.005f) return src
+        val w = src.width
+        val h = src.height
+        val px = IntArray(w * h)
+        src.getPixels(px, 0, w, 0, 0, w, h)
+        val out = IntArray(w * h)
+        val k = strength.coerceIn(0f, 1f)
+        // higher strength tolerates a bigger difference before it refuses to blend
+        val tol = 10f + 46f * k
+
+        for (y in 0 until h) {
+            for (x in 0 until w) {
+                val i = y * w + x
+                val p = px[i]
+                val r0 = (p shr 16) and 0xFF
+                val g0 = (p shr 8) and 0xFF
+                val b0 = p and 0xFF
+                var sr = 0f
+                var sg = 0f
+                var sb = 0f
+                var sw = 0f
+                for (dy in -1..1) {
+                    val yy = (y + dy).coerceIn(0, h - 1)
+                    for (dx in -1..1) {
+                        val xx = (x + dx).coerceIn(0, w - 1)
+                        val q = px[yy * w + xx]
+                        val qr = (q shr 16) and 0xFF
+                        val qg = (q shr 8) and 0xFF
+                        val qb = q and 0xFF
+                        val d = (kotlin.math.abs(qr - r0) + kotlin.math.abs(qg - g0) +
+                            kotlin.math.abs(qb - b0)) / 3f
+                        val weight = kotlin.math.exp(-(d * d) / (2f * tol * tol))
+                        sr += qr * weight
+                        sg += qg * weight
+                        sb += qb * weight
+                        sw += weight
+                    }
+                }
+                if (sw <= 0f) {
+                    out[i] = p
+                } else {
+                    val nr = r0 + (sr / sw - r0) * k
+                    val ng = g0 + (sg / sw - g0) * k
+                    val nb = b0 + (sb / sw - b0) * k
+                    out[i] = (p and 0xFF000000.toInt()) or
+                        (nr.toInt().coerceIn(0, 255) shl 16) or
+                        (ng.toInt().coerceIn(0, 255) shl 8) or
+                        (nb.toInt().coerceIn(0, 255))
+                }
+            }
+        }
+
+        val bmp = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+        bmp.setPixels(out, 0, w, 0, 0, w, h)
+        return bmp
+    }
+
     fun applyTone(
         src: Bitmap,
         highlights: Float,
         shadows: Float,
         vibrance: Float,
         hueShift: Float,
+        whites: Float = 0f,
+        blacks: Float = 0f,
+        dehaze: Float = 0f,
     ): Bitmap {
         if (kotlin.math.abs(highlights) < 0.004f &&
             kotlin.math.abs(shadows) < 0.004f &&
             kotlin.math.abs(vibrance) < 0.004f &&
-            kotlin.math.abs(hueShift) < 0.004f
+            kotlin.math.abs(hueShift) < 0.004f &&
+            kotlin.math.abs(whites) < 0.004f &&
+            kotlin.math.abs(blacks) < 0.004f &&
+            kotlin.math.abs(dehaze) < 0.004f
         ) {
             return src
         }
-        val w = src.width
-        val h = src.height
+
+        // Dehaze is a whole-image estimate, so it runs once before the loop.
+        val veiled = if (kotlin.math.abs(dehaze) >= 0.004f) dehaze(src, dehaze) else src
+        val w = veiled.width
+        val h = veiled.height
         val px = IntArray(w * h)
-        src.getPixels(px, 0, w, 0, 0, w, h)
+        veiled.getPixels(px, 0, w, 0, 0, w, h)
         val out = IntArray(w * h)
 
         for (i in px.indices) {
@@ -592,7 +1032,34 @@ object ImageOps {
             var g = ((p shr 8) and 0xFF).toFloat() / 255f
             var b = (p and 0xFF).toFloat() / 255f
 
-            val l = r * 0.299f + g * 0.587f + b * 0.114f
+            var l = r * 0.299f + g * 0.587f + b * 0.114f
+
+            // Whites and blacks move the *ends* of the tone ramp rather than
+            // lifting whole regions: white scales everything above the midpoint
+            // toward clipping, black pulls the bottom toward zero. Highlights and
+            // shadows below recover detail inside those regions instead.
+            if (whites != 0f) {
+                // pivot at mid grey so the shadows stay put
+                val k = whites * 0.55f
+                val gain = 1f + k
+                r = 0.5f + (r - 0.5f) * gain
+                g = 0.5f + (g - 0.5f) * gain
+                b = 0.5f + (b - 0.5f) * gain
+            }
+            if (blacks != 0f) {
+                // negative lifts the black point (washed out), positive crushes it
+                val lift = -blacks * 0.22f
+                r += lift
+                g += lift
+                b += lift
+                if (blacks > 0f) {
+                    // a touch of extra contrast only where the pixel is dark
+                    val grip = (1f - l).coerceIn(0f, 1f) * blacks * 0.35f
+                    r -= grip * r
+                    g -= grip * g
+                    b -= grip * b
+                }
+            }
 
             // shadows lift the low end, highlights recover the top end
             if (shadows != 0f) {
